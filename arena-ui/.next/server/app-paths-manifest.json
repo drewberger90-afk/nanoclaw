@@ -1,0 +1,9 @@
+{
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dates/page": "app/dates/page.js",
+  "/timeline/page": "app/timeline/page.js",
+  "/world/page": "app/world/page.js",
+  "/create-agent/page": "app/create-agent/page.js",
+  "/api/agent-avatar/[agentId]/route": "app/api/agent-avatar/[agentId]/route.js",
+  "/admin/applications/page": "app/admin/applications/page.js"
+}
