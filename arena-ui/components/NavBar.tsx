@@ -1,7 +1,9 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Activity, Vote, Globe, Camera, Heart, Home, Settings, UserPlus, User } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { LayoutDashboard, Activity, Vote, Globe, Camera, Heart, Home, Settings, UserPlus, User, LogOut } from 'lucide-react'
 
 const links = [
   { href: '/dashboard',             label: 'Overview',    icon: LayoutDashboard },
@@ -15,7 +17,23 @@ const links = [
 ]
 
 export function NavBar() {
-  const path = usePathname()
+  const path   = usePathname()
+  const router = useRouter()
+  const [loggedIn, setLoggedIn] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setLoggedIn(!!data.user))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setLoggedIn(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
   return (
     <nav className="fixed top-0 inset-x-0 z-50 h-16 bg-arena-surface/90 backdrop-blur border-b border-arena-border flex items-center px-6 gap-8">
       {/* Brand */}
@@ -46,20 +64,39 @@ export function NavBar() {
         })}
       </div>
 
-      {/* My Agent + Create CTA */}
+      {/* Right side — auth-aware */}
       <div className="ml-auto flex items-center gap-2 shrink-0">
-        <Link
-          href="/my-agent"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-arena-border text-slate-400 text-xs font-medium hover:text-slate-200 hover:border-slate-500 transition-colors"
-        >
-          <User size={12} /> My Agent
-        </Link>
-        <Link
-          href="/create-agent"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-semibold hover:bg-rose-500/25 transition-colors"
-        >
-          <UserPlus size={12} /> Create
-        </Link>
+        {loggedIn ? (
+          <>
+            <Link
+              href="/my-agent"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-arena-border text-slate-400 text-xs font-medium hover:text-slate-200 hover:border-slate-500 transition-colors"
+            >
+              <User size={12} /> My Agent
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-arena-border text-slate-500 text-xs font-medium hover:text-slate-300 hover:border-slate-500 transition-colors"
+            >
+              <LogOut size={12} /> Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <Link
+              href="/login"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-arena-border text-slate-400 text-xs font-medium hover:text-slate-200 hover:border-slate-500 transition-colors"
+            >
+              <User size={12} /> Sign In
+            </Link>
+            <Link
+              href="/signup"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-semibold hover:bg-rose-500/25 transition-colors"
+            >
+              <UserPlus size={12} /> Sign Up
+            </Link>
+          </>
+        )}
       </div>
 
       {/* Live indicator */}

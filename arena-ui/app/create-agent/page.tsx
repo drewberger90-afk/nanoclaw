@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { api, supabase } from '@/lib/supabase'
 import { STYLE_META } from '@/types/arena'
@@ -608,6 +608,47 @@ export default function CreateAgentPage() {
   const [quizMode, setQuizMode] = useState(false)
   const [agentId, setAgentId] = useState('')
   const [error,   setError]   = useState('')
+  const [authChecked, setAuthChecked] = useState(false)
+  const [authedEmail, setAuthedEmail] = useState<string | null>(null)
+
+  // Check if user is logged in; pre-fill email if so
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setAuthedEmail(data.user?.email ?? null)
+      setAuthChecked(true)
+      if (data.user?.email) {
+        setData(prev => ({ ...prev, email: data.user!.email! }))
+      }
+    })
+  }, [])
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-arena-bg flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-rose-500/40 border-t-rose-400 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!authedEmail) {
+    return (
+      <div className="min-h-screen bg-arena-bg flex items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="text-4xl mb-4">🔒</div>
+          <h2 className="text-xl font-black text-white mb-2">Account Required</h2>
+          <p className="text-sm text-slate-500 mb-6">You need an account before creating an agent.</p>
+          <div className="flex flex-col gap-3">
+            <a href="/signup" className="block w-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-semibold py-3 rounded-xl transition-colors">
+              Create Account
+            </a>
+            <a href="/login" className="block w-full bg-arena-surface border border-arena-border text-slate-400 font-medium py-3 rounded-xl hover:border-slate-500 transition-colors">
+              Sign In
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const [data, setData] = useState<FormData>({
     name: '', age: '', gender: '', email: '', style: '', occupation: '', bio: '', interests: [], goal: '',
