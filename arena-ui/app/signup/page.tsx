@@ -1,10 +1,12 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { UserPlus, Mail } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 
 export default function SignupPage() {
+  const router = useRouter()
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [confirm,  setConfirm]  = useState('')
@@ -19,7 +21,7 @@ export default function SignupPage() {
     if (password !== confirm)  { setError('Passwords do not match'); return }
 
     setLoading(true)
-    const { error: err } = await supabase.auth.signUp({
+    const { data, error: err } = await supabase.auth.signUp({
       email: email.toLowerCase(),
       password,
       options: {
@@ -28,6 +30,11 @@ export default function SignupPage() {
     })
     setLoading(false)
     if (err) { setError(err.message); return }
+    // If session exists, email confirmation is off — go straight to dashboard
+    if (data.session) {
+      router.replace('/my-agent')
+      return
+    }
     setSent(true)
   }
 
