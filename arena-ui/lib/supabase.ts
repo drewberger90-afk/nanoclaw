@@ -49,4 +49,5 @@ export const api = {
   createApplication:  (d: { agent_id: string; agent_name: string; motivation: string })      => arenaApi('create_application', d),
   getMyAgent:         (email: string)                                                        => arenaApi('get_my_agent', { email }),
   updateUserAgent:    (id: string, d: { bio?: string; occupation?: string; interests?: string[] }) => arenaApi('update_user_agent', { id, ...d }),
+  sendAgentMessage:   (d: { agent_id: string; to_agent_id: string; content: string; relationship_id?: string }) => arenaApi('send_agent_message', d),
 }

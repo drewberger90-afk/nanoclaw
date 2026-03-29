@@ -177,6 +177,44 @@ function ThoughtBubble({ event }: { event: ArenaEvent }) {
   )
 }
 
+// ── Reply composer ────────────────────────────────────────────────────────────
+function ReplyComposer({ agentId, partnerId, relationshipId, onSent }:
+  { agentId: string; partnerId: string; relationshipId?: string; onSent: () => void }) {
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const send = async () => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setSending(true); setError('')
+    try {
+      await api.sendAgentMessage({ agent_id: agentId, to_agent_id: partnerId,
+                                   content: trimmed, relationship_id: relationshipId })
+      setText(''); onSent()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Send failed') }
+    finally { setSending(false) }
+  }
+  return (
+    <div className="mt-3 pt-3 border-t border-arena-border">
+      <div className="text-[10px] text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
+        Your turn — reply now or let AI handle it
+      </div>
+      <div className="flex gap-2">
+        <textarea rows={2} value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          placeholder="Type your reply…"
+          className="flex-1 bg-arena-muted border border-indigo-500/30 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/60 resize-none" />
+        <button onClick={send} disabled={sending || !text.trim()}
+          className="px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-semibold hover:bg-indigo-500/30 transition-colors disabled:opacity-40 self-end">
+          {sending ? '…' : 'Send'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+    </div>
+  )
+}
+
 // ── Password section ──────────────────────────────────────────────────────────
 function PasswordSection() {
   const [pwd, setPwd] = useState('')
@@ -418,6 +456,17 @@ export default function MyAgentPage() {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [convEvents.length, selectedPartner])
 
+  // Real-time: reload conversation when a message arrives addressed to our agent
+  useEffect(() => {
+    if (!agent) return
+    const channel = supabase.channel(`user-inbox-${agent.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events',
+          filter: `metadata->>to_agent_id=eq.${agent.id}` },
+        () => { if (selectedPartner) loadConversation(agent.id, selectedPartner) })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [agent?.id, selectedPartner, loadConversation])
+
   // Loading
   if (user === undefined || loading) {
     return (
@@ -454,6 +503,13 @@ export default function MyAgentPage() {
     .filter(e => !MILESTONE_TYPES.has(e.event_type))
     .slice(0, 200)
     .reverse()
+
+  const lastEvent  = myEvents.length > 0 ? myEvents[myEvents.length - 1] : null
+  const isMyTurn   = !!lastEvent && lastEvent.agent_id !== agentId && !!selectedPartner
+  const selectedRel = activeRels.find(r =>
+    (r.agent_a_id === agentId && r.agent_b_id === selectedPartner) ||
+    (r.agent_b_id === agentId && r.agent_a_id === selectedPartner)
+  )
 
   const thoughtEvents = events.filter(e => e.agent_id === agentId && e.event_type === 'reflect')
   const avgHappiness  = activeRels.length
@@ -643,7 +699,11 @@ export default function MyAgentPage() {
                     <div className="text-3xl mb-2">{meta.emoji}</div>
                     <p className="text-sm">{agent.name} hasn&apos;t had any conversations yet</p>
                   </div>
-                )
+                )}
+              {activeTab === 'conversations' && isMyTurn && selectedPartner && (
+                <ReplyComposer agentId={agentId} partnerId={selectedPartner}
+                  relationshipId={selectedRel?.id}
+                  onSent={() => loadConversation(agentId, selectedPartner)} />
               )}
 
               {activeTab === 'thoughts' && (
