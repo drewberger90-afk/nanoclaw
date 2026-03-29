@@ -456,13 +456,25 @@ export default function MyAgentPage() {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [convEvents.length, selectedPartner])
 
-  // Real-time: reload conversation when a message arrives addressed to our agent
+  // Real-time: reload conversation + relationships when a message arrives addressed to our agent
   useEffect(() => {
     if (!agent) return
     const channel = supabase.channel(`user-inbox-${agent.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events',
           filter: `metadata->>to_agent_id=eq.${agent.id}` },
-        () => { if (selectedPartner) loadConversation(agent.id, selectedPartner) })
+        async (payload) => {
+          // Reload relationships so the new sender appears in Connections
+          const relsRes = await api.getRelationships()
+          if (Array.isArray(relsRes?.data)) setRelationships(relsRes.data)
+          // If no partner is selected yet, auto-select the sender and load the conversation
+          const senderId = (payload.new as { agent_id?: string })?.agent_id
+          if (senderId && !selectedPartner) {
+            setSelectedPartner(senderId)
+            loadConversation(agent.id, senderId)
+          } else if (selectedPartner) {
+            loadConversation(agent.id, selectedPartner)
+          }
+        })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [agent?.id, selectedPartner, loadConversation])
