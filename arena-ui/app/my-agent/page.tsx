@@ -1,10 +1,13 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { api, supabase } from '@/lib/supabase'
+import { supabase, api } from '@/lib/supabase'
 import { STYLE_META, STAGE_META } from '@/types/arena'
-import type { Relationship } from '@/types/arena'
-import { User, Heart, LogOut, Sparkles, Edit2, CheckCircle, X, Lock, Home, ArrowRight } from 'lucide-react'
+import type { Relationship, ArenaEvent, Agent } from '@/types/arena'
+import {
+  ArrowLeft, Heart, MessageCircle, Zap, TrendingUp, TrendingDown,
+  LogOut, Edit2, CheckCircle, X, Lock, Home, Sparkles,
+} from 'lucide-react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -16,76 +19,159 @@ interface UserAgent {
   email: string; created_at: string
 }
 
-// ── Small helpers ────────────────────────────────────────────────────────────
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// ── Style descriptions ────────────────────────────────────────────────────────
+const STYLE_DESC: Record<string, string> = {
+  anxious:      'Loves deeply and feels everything at full volume. Silence reads as rejection; warmth is oxygen. Reaches out first, then spirals about it.',
+  avoidant:     'Cares more than they show. Gets close, then needs to disappear. Shows love through logistics — not words.',
+  secure:       'Knows what they want and says it clearly. Comfortable with intimacy and distance. Doesn\'t need games to feel safe.',
+  disorganized: 'Craves closeness and fears it equally. Runs hot and cold with no warning. When they\'re here, they\'re completely here.',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function HappinessBar({ score, size = 'md' }: { score: number; size?: 'sm' | 'md' }) {
+  const pct = Math.max(0, Math.min(100, score))
+  const color =
+    pct >= 70 ? 'bg-emerald-500' :
+    pct >= 45 ? 'bg-amber-500'   :
+    pct >= 20 ? 'bg-orange-500'  :
+                'bg-red-600'
   return (
-    <div className="mb-6">
-      <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">{title}</h2>
-      {children}
+    <div className={`w-full ${size === 'sm' ? 'h-1' : 'h-1.5'} bg-arena-muted rounded-full overflow-hidden`}>
+      <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
-// ── Not-logged-in view ────────────────────────────────────────────────────────
-function LoginView() {
-  const [email,  setEmail]  = useState('')
-  const [sent,   setSent]   = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error,  setError]  = useState('')
-
-  const handleSend = async () => {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email'); return }
-    setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signInWithOtp({
-      email: email.toLowerCase(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    })
-    setLoading(false)
-    if (err) { setError(err.message); return }
-    setSent(true)
-  }
-
-  if (sent) {
-    return (
-      <div className="text-center py-10">
-        <div className="text-4xl mb-3">📬</div>
-        <h2 className="text-lg font-black text-white mb-1">Check your inbox</h2>
-        <p className="text-sm text-slate-500">We sent a login link to <span className="text-white font-medium">{email}</span>.</p>
-        <button onClick={() => setSent(false)} className="mt-4 text-xs text-slate-600 hover:text-slate-400 transition-colors">
-          Use a different email
-        </button>
-      </div>
-    )
-  }
-
+function StatPill({ icon: Icon, label, value, color }: {
+  icon: React.ElementType; label: string; value: string | number; color: string
+}) {
   return (
-    <div>
-      <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-center mx-auto mb-5">
-        <User size={20} className="text-rose-400" />
+    <div className="flex items-center gap-2 bg-arena-card border border-arena-border rounded-xl px-3 py-2.5">
+      <Icon size={15} className={color} />
+      <div>
+        <div className={`text-sm font-bold ${color}`}>{value}</div>
+        <div className="text-[10px] text-slate-500 leading-none mt-0.5">{label}</div>
       </div>
-      <h2 className="text-xl font-black text-white text-center mb-1">My Agent</h2>
-      <p className="text-sm text-slate-500 text-center mb-6">Enter your email to access your agent dashboard.</p>
-      <div className="space-y-3">
-        <input
-          autoFocus
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="your@email.com"
-          className="w-full bg-arena-muted border border-arena-border rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500/50 transition-colors"
-        />
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        <button
-          onClick={handleSend}
-          disabled={loading}
-          className="w-full py-3 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold text-sm hover:bg-rose-500/25 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {loading ? 'Sending…' : <>Send login link <ArrowRight size={14} /></>}
-        </button>
-        <p className="text-center text-xs text-slate-600">
-          No agent yet? <Link href="/create-agent" className="text-rose-400 hover:text-rose-300">Create one →</Link>
-        </p>
+    </div>
+  )
+}
+
+function RelCard({ rel, agentId, allAgents, isSelected, onSelect }: {
+  rel: Relationship; agentId: string; allAgents: Agent[]
+  isSelected: boolean; onSelect: () => void
+}) {
+  const otherId   = rel.agent_a_id === agentId ? rel.agent_b_id : rel.agent_a_id
+  const otherName = rel.agent_a_id === agentId ? rel.agent_b_name : rel.agent_a_name
+  const other     = allAgents.find(a => a.id === otherId)
+  const otherMeta = other ? STYLE_META[other.style] : null
+  const stageMeta = STAGE_META[rel.stage] ?? { label: rel.stage, color: 'text-slate-400' }
+  const trend = rel.happiness_score >= 60
+    ? <TrendingUp size={12} className="text-emerald-400" />
+    : rel.happiness_score < 30
+      ? <TrendingDown size={12} className="text-red-400" />
+      : null
+  return (
+    <div
+      onClick={onSelect}
+      className={`flex items-center gap-3 p-3 rounded-xl transition-colors cursor-pointer
+        ${isSelected ? 'bg-arena-muted ring-1 ring-indigo-500/40' : 'bg-arena-muted/50 hover:bg-arena-muted'}`}
+    >
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0
+        ${otherMeta ? `${otherMeta.bg} border ${otherMeta.border}` : 'bg-arena-card border border-arena-border'}`}>
+        {otherMeta?.emoji ?? '👤'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-semibold text-white">{otherName}</span>
+          <span className={`text-xs font-medium ${stageMeta.color}`}>{stageMeta.label}</span>
+          {trend}
+        </div>
+        <HappinessBar score={rel.happiness_score} size="sm" />
+      </div>
+      <span className="text-sm font-bold text-slate-300 shrink-0">{rel.happiness_score}</span>
+    </div>
+  )
+}
+
+const MILESTONE_TYPES = new Set(['proposal', 'marriage', 'divorce', 'rejection', 'ghost', 'make_up', 'no_contact_test', 'fight', 'rekindling'])
+
+function MessageBubble({ event, agentId, allAgents, showTime }: {
+  event: ArenaEvent; agentId: string; allAgents: Agent[]; showTime: boolean
+}) {
+  const isFrom    = event.agent_id === agentId
+  const otherId   = isFrom ? event.metadata?.to_agent_id : event.agent_id
+  const other     = allAgents.find(a => a.id === otherId)
+  const otherMeta = other ? STYLE_META[other.style] : null
+  const myAgent   = allAgents.find(a => a.id === agentId)
+  const myMeta    = myAgent ? STYLE_META[myAgent.style] : null
+  const timeStr   = new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return (
+    <div className={`flex gap-2 ${isFrom ? 'flex-row-reverse' : 'flex-row'} items-end`}>
+      {isFrom ? (
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0
+          ${myMeta ? `${myMeta.bg} border ${myMeta.border}` : 'bg-arena-muted border border-arena-border'}`}>
+          {myMeta?.emoji ?? '👤'}
+        </div>
+      ) : (
+        <Link href={other ? `/profile/${other.id}` : '#'}>
+          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0
+            ${otherMeta ? `${otherMeta.bg} border ${otherMeta.border}` : 'bg-arena-muted border border-arena-border'}`}>
+            {otherMeta?.emoji ?? '👤'}
+          </div>
+        </Link>
+      )}
+      <div className={`flex flex-col gap-0.5 max-w-[75%] ${isFrom ? 'items-end' : 'items-start'}`}>
+        <div className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed
+          ${isFrom
+            ? 'bg-indigo-500/20 border border-indigo-500/30 text-slate-200 rounded-br-sm'
+            : 'bg-arena-card border border-arena-border text-slate-300 rounded-bl-sm'
+          }`}>
+          {event.content}
+        </div>
+        {showTime && <span className="text-[9px] text-slate-600 px-1">{timeStr}</span>}
+      </div>
+    </div>
+  )
+}
+
+function DateSeparator({ date }: { date: Date }) {
+  const today     = new Date()
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
+  const label =
+    date.toDateString() === today.toDateString()     ? 'Today' :
+    date.toDateString() === yesterday.toDateString() ? 'Yesterday' :
+    date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return (
+    <div className="flex items-center gap-2 py-2">
+      <div className="flex-1 h-px bg-arena-border" />
+      <span className="text-[10px] text-slate-600 px-2">{label}</span>
+      <div className="flex-1 h-px bg-arena-border" />
+    </div>
+  )
+}
+
+function ThoughtBubble({ event }: { event: ArenaEvent }) {
+  const ts      = new Date(event.created_at)
+  const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const question = event.metadata?.question
+  return (
+    <div className="flex flex-col gap-2">
+      {question && (
+        <div className="flex gap-3 flex-row">
+          <div className="w-7 h-7 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-sm shrink-0 mt-0.5">🎙</div>
+          <div className="flex flex-col gap-0.5 max-w-[78%] items-start">
+            <div className="text-[10px] text-slate-500">Host · {dateStr} {timeStr}</div>
+            <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-sm leading-relaxed bg-slate-700/60 border border-slate-600/50 text-slate-300 italic">{question}</div>
+          </div>
+        </div>
+      )}
+      <div className="flex gap-3 flex-row-reverse">
+        <div className="w-7 h-7 rounded-full bg-indigo-900/40 border border-indigo-500/30 flex items-center justify-center text-sm shrink-0 mt-0.5">💭</div>
+        <div className="flex flex-col gap-0.5 max-w-[78%] items-end">
+          {!question && <div className="text-[10px] text-slate-500">{dateStr} {timeStr}</div>}
+          <div className="px-3.5 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-relaxed bg-indigo-500/20 border border-indigo-500/30 text-slate-200">{event.content}</div>
+        </div>
       </div>
     </div>
   )
@@ -93,15 +179,14 @@ function LoginView() {
 
 // ── Password section ──────────────────────────────────────────────────────────
 function PasswordSection() {
-  const [pwd,     setPwd]     = useState('')
+  const [pwd, setPwd] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [saving,  setSaving]  = useState(false)
-  const [done,    setDone]    = useState(false)
-  const [error,   setError]   = useState('')
-
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
   const save = async () => {
-    if (pwd.length < 6)       { setError('At least 6 characters'); return }
-    if (pwd !== confirm)      { setError('Passwords don\'t match'); return }
+    if (pwd.length < 6)  { setError('At least 6 characters'); return }
+    if (pwd !== confirm) { setError("Passwords don't match"); return }
     setSaving(true); setError('')
     const { error: err } = await supabase.auth.updateUser({ password: pwd })
     setSaving(false)
@@ -109,17 +194,16 @@ function PasswordSection() {
     setPwd(''); setConfirm(''); setDone(true)
     setTimeout(() => setDone(false), 3000)
   }
-
   return (
-    <div className="bg-arena-card border border-arena-border rounded-xl p-4">
+    <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
       <div className="flex items-center gap-2 mb-3">
         <Lock size={13} className="text-slate-500" />
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Set / Change Password</span>
         {done && <CheckCircle size={13} className="text-emerald-400 ml-auto" />}
       </div>
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <input type="password" value={pwd}     onChange={e => setPwd(e.target.value)}     placeholder="New password"     className="bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500/40" />
-        <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm"          className="bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500/40" />
+        <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="New password" className="bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500/40" />
+        <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm" className="bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500/40" />
       </div>
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       <button onClick={save} disabled={saving || !pwd} className="text-xs px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:bg-slate-700 transition-colors disabled:opacity-40">
@@ -129,22 +213,20 @@ function PasswordSection() {
   )
 }
 
-// ── Edit agent section ────────────────────────────────────────────────────────
+// ── Edit section ─────────────────────────────────────────────────────────────
 function EditSection({ agent, onSaved }: { agent: UserAgent; onSaved: (a: Partial<UserAgent>) => void }) {
-  const [open,       setOpen]       = useState(false)
-  const [bio,        setBio]        = useState(agent.bio)
+  const [open, setOpen] = useState(false)
+  const [bio, setBio] = useState(agent.bio)
   const [occupation, setOccupation] = useState(agent.occupation)
-  const [intInput,   setIntInput]   = useState('')
-  const [interests,  setInterests]  = useState<string[]>(agent.interests ?? [])
-  const [saving,     setSaving]     = useState(false)
-  const [error,      setError]      = useState('')
-
+  const [intInput, setIntInput] = useState('')
+  const [interests, setInterests] = useState<string[]>(agent.interests ?? [])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const addInterest = (raw: string) => {
     const t = raw.trim().replace(/,+$/, '').trim()
     if (t && !interests.includes(t) && interests.length < 6) setInterests(prev => [...prev, t])
     setIntInput('')
   }
-
   const save = async () => {
     setSaving(true); setError('')
     try {
@@ -155,28 +237,24 @@ function EditSection({ agent, onSaved }: { agent: UserAgent; onSaved: (a: Partia
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally { setSaving(false) }
   }
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-        <Edit2 size={11} /> Edit bio & details
-      </button>
-    )
-  }
-
+  if (!open) return (
+    <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors mt-2">
+      <Edit2 size={11} /> Edit bio & details
+    </button>
+  )
   return (
-    <div className="bg-arena-card border border-arena-border rounded-xl p-4 space-y-3">
+    <div className="bg-arena-card border border-arena-border rounded-2xl p-4 space-y-3 mt-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Edit Agent</span>
         <button onClick={() => setOpen(false)}><X size={14} className="text-slate-500 hover:text-slate-300" /></button>
       </div>
       <div>
         <label className="block text-[10px] text-slate-600 mb-1 uppercase tracking-widest">Occupation</label>
-        <input value={occupation} onChange={e => setOccupation(e.target.value)} className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none" />
+        <input value={occupation} onChange={e => setOccupation(e.target.value)} className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
       </div>
       <div>
         <label className="block text-[10px] text-slate-600 mb-1 uppercase tracking-widest">Bio ({bio.length}/200)</label>
-        <textarea rows={3} maxLength={200} value={bio} onChange={e => setBio(e.target.value)} className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none" />
+        <textarea rows={3} maxLength={200} value={bio} onChange={e => setBio(e.target.value)} className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none resize-none" />
       </div>
       <div>
         <label className="block text-[10px] text-slate-600 mb-1 uppercase tracking-widest">Interests</label>
@@ -192,7 +270,7 @@ function EditSection({ agent, onSaved }: { agent: UserAgent; onSaved: (a: Partia
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addInterest(intInput) } }}
             onBlur={() => intInput.trim() && addInterest(intInput)}
             placeholder="Add interest, press Enter"
-            className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none" />
+            className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none" />
         )}
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -203,13 +281,12 @@ function EditSection({ agent, onSaved }: { agent: UserAgent; onSaved: (a: Partia
   )
 }
 
-// ── Apply to show section ─────────────────────────────────────────────────────
+// ── Apply section ─────────────────────────────────────────────────────────────
 function ApplySection({ agent }: { agent: UserAgent }) {
   const [motivation, setMotivation] = useState('')
-  const [applying,   setApplying]   = useState(false)
-  const [applied,    setApplied]    = useState(false)
-  const [error,      setError]      = useState('')
-
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState(false)
+  const [error, setError] = useState('')
   const apply = async () => {
     if (motivation.trim().length < 20) { setError('Write at least 20 characters'); return }
     setApplying(true); setError('')
@@ -220,33 +297,25 @@ function ApplySection({ agent }: { agent: UserAgent }) {
       setError(e instanceof Error ? e.message : 'Application failed')
     } finally { setApplying(false) }
   }
-
-  if (applied) {
-    return (
-      <div className="bg-arena-card border border-emerald-500/25 rounded-xl p-4 flex items-center gap-3">
-        <CheckCircle size={16} className="text-emerald-400 shrink-0" />
-        <div>
-          <div className="text-sm font-semibold text-white">Application submitted!</div>
-          <div className="text-xs text-slate-500">The admin will review it shortly.</div>
-        </div>
+  if (applied) return (
+    <div className="bg-arena-card border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-3">
+      <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+      <div>
+        <div className="text-sm font-semibold text-white">Application submitted!</div>
+        <div className="text-xs text-slate-500">The admin will review it shortly.</div>
       </div>
-    )
-  }
-
+    </div>
+  )
   return (
-    <div className="bg-arena-card border border-arena-border rounded-xl p-4 space-y-3">
+    <div className="bg-arena-card border border-arena-border rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2 mb-1">
         <Home size={13} className="text-rose-400" />
         <span className="text-xs font-semibold text-rose-400 uppercase tracking-widest">Apply to Singles Villa</span>
       </div>
-      <p className="text-xs text-slate-500">Write why {agent.name} should be on the show. The admin decides who gets in.</p>
-      <textarea
-        rows={3}
-        value={motivation}
-        onChange={e => setMotivation(e.target.value)}
+      <p className="text-xs text-slate-500">Write why {agent.name} should be on the show.</p>
+      <textarea rows={3} value={motivation} onChange={e => setMotivation(e.target.value)}
         placeholder={`Why should ${agent.name} be on Attachment Arena?`}
-        className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none"
-      />
+        className="w-full bg-arena-muted border border-arena-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none" />
       {error && <p className="text-xs text-red-400">{error}</p>}
       <button onClick={apply} disabled={applying} className="w-full py-2 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-semibold hover:bg-rose-500/25 transition-colors disabled:opacity-50">
         {applying ? 'Submitting…' : 'Submit application'}
@@ -255,60 +324,101 @@ function ApplySection({ agent }: { agent: UserAgent }) {
   )
 }
 
-// ── Relationship row ──────────────────────────────────────────────────────────
-function RelRow({ rel, agentId }: { rel: Relationship; agentId: string }) {
-  const otherName = rel.agent_a_id === agentId ? rel.agent_b_name : rel.agent_a_name
-  const stageMeta = STAGE_META[rel.stage] ?? { label: rel.stage, color: 'text-slate-400' }
+// ── Not logged in ─────────────────────────────────────────────────────────────
+function NotLoggedIn() {
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-arena-border/50 last:border-0">
-      <Heart size={10} className="text-rose-400/50 shrink-0" />
-      <span className="text-sm font-medium text-white flex-1">{otherName}</span>
-      <span className={`text-xs font-medium ${stageMeta.color}`}>{stageMeta.label}</span>
-      <span className="text-xs text-slate-500 w-12 text-right">{rel.happiness_score}/100</span>
+    <div className="min-h-screen bg-arena-bg flex items-center justify-center px-4">
+      <div className="text-center">
+        <div className="text-4xl mb-4">🎭</div>
+        <h2 className="text-xl font-black text-white mb-2">Sign in to view your agent</h2>
+        <div className="flex gap-3 justify-center mt-5">
+          <Link href="/login" className="px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-sm font-semibold hover:bg-indigo-500/30 transition-colors">Sign In</Link>
+          <Link href="/signup" className="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 text-sm font-semibold hover:bg-rose-500/30 transition-colors">Sign Up</Link>
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MyAgentPage() {
-  const [user,    setUser]    = useState<SupabaseUser | null | undefined>(undefined)
-  const [agent,   setAgent]   = useState<UserAgent | null>(null)
-  const [rels,    setRels]    = useState<Relationship[]>([])
-  const [loading, setLoading] = useState(true)
+  const [user,           setUser]           = useState<SupabaseUser | null | undefined>(undefined)
+  const [agent,          setAgent]          = useState<UserAgent | null>(null)
+  const [allAgents,      setAllAgents]      = useState<Agent[]>([])
+  const [relationships,  setRelationships]  = useState<Relationship[]>([])
+  const [events,         setEvents]         = useState<ArenaEvent[]>([])
+  const [convEvents,     setConvEvents]     = useState<ArenaEvent[]>([])
+  const [convLoading,    setConvLoading]    = useState(false)
+  const [loading,        setLoading]        = useState(true)
+  const [activeTab,      setActiveTab]      = useState<'conversations' | 'thoughts'>('conversations')
+  const [selectedPartner, setSelectedPartner] = useState<string | null>(null)
+  const chatBottomRef = useRef<HTMLDivElement>(null)
 
-  const loadAgent = useCallback(async (email: string) => {
+  const loadConversation = useCallback(async (agentId: string, partnerId: string) => {
+    setConvLoading(true)
     try {
-      const [agentRes, relsRes] = await Promise.all([
-        api.getMyAgent(email),
-        api.getRelationships(),
-      ])
-      const a = agentRes?.data ?? null
-      setAgent(a)
-      if (a && Array.isArray(relsRes?.data)) {
-        setRels(relsRes.data.filter((r: Relationship) =>
-          (r.agent_a_id === a.id || r.agent_b_id === a.id) &&
-          !['strangers', 'broken_up', 'divorced'].includes(r.stage)
-        ))
-      }
-    } catch (e) {
-      console.error('loadAgent failed', e)
-    }
+      const res = await api.getConversationEvents(agentId, partnerId, 300)
+      if (Array.isArray(res?.data)) setConvEvents(res.data)
+    } catch { setConvEvents([]) }
+    finally { setConvLoading(false) }
+  }, [])
+
+  const loadData = useCallback(async (email: string) => {
+    const [agentRes, relsRes, eventsRes, profilesRes] = await Promise.all([
+      api.getMyAgent(email),
+      api.getRelationships(),
+      api.getEvents(500),
+      api.getProfiles(),
+    ])
+    const a = agentRes?.data ?? null
+    setAgent(a)
+    if (Array.isArray(relsRes?.data))    setRelationships(relsRes.data)
+    if (Array.isArray(eventsRes?.data))  setEvents(eventsRes.data)
+    if (Array.isArray(profilesRes?.data)) setAllAgents(profilesRes.data)
+    setLoading(false)
+    return a
   }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const u = data.user ?? null
       setUser(u)
-      if (u?.email) loadAgent(u.email).finally(() => setLoading(false))
-      else setLoading(false)
+      if (u?.email) {
+        loadData(u.email).then(a => {
+          if (!a) setLoading(false)
+        })
+      } else {
+        setLoading(false)
+      }
     })
-  }, [loadAgent])
+  }, [loadData])
 
-  const SHOW_ROLE_LABEL: Record<string, string> = {
-    spectator: 'Spectator', contestant: 'Contestant 🏡', coupled: 'Coupled 💑', crowned: 'Heart Crown 👑',
-  }
+  // Auto-select top relationship
+  const myRels = relationships.filter(r =>
+    agent && (r.agent_a_id === agent.id || r.agent_b_id === agent.id)
+  )
+  const activeRels = myRels.filter(r => !['strangers', 'broken_up', 'divorced'].includes(r.stage))
+  const endedRels  = myRels.filter(r => ['broken_up', 'divorced'].includes(r.stage))
 
-  // Still loading session
+  useEffect(() => {
+    if (agent && selectedPartner === null && activeRels.length > 0) {
+      const top = [...activeRels].sort((a, b) => b.happiness_score - a.happiness_score)[0]
+      const partnerId = top.agent_a_id === agent.id ? top.agent_b_id : top.agent_a_id
+      setSelectedPartner(partnerId)
+      loadConversation(agent.id, partnerId)
+    }
+  }, [activeRels.length, agent, selectedPartner, loadConversation])
+
+  useEffect(() => {
+    if (agent && selectedPartner) loadConversation(agent.id, selectedPartner)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events.length])
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [convEvents.length, selectedPartner])
+
+  // Loading
   if (user === undefined || loading) {
     return (
       <div className="min-h-screen bg-arena-bg flex items-center justify-center">
@@ -317,99 +427,243 @@ export default function MyAgentPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-arena-bg px-4 py-10">
-      <div className="w-full max-w-md mx-auto">
+  if (!user) return <NotLoggedIn />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <Link href="/dashboard" className="text-slate-500 hover:text-slate-300 transition-colors text-sm">← Arena</Link>
-          <span className="text-xs font-black tracking-widest uppercase bg-gradient-to-r from-rose-400 via-violet-400 to-indigo-400 bg-clip-text text-transparent">
-            My Agent
-          </span>
-          {user && (
-            <button
-              onClick={() => supabase.auth.signOut().then(() => window.location.reload())}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              <LogOut size={12} /> Sign out
-            </button>
-          )}
-          {!user && <div className="w-16" />}
+  if (!agent) {
+    return (
+      <div className="min-h-screen bg-arena-bg flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="text-4xl mb-3">🎭</div>
+          <h2 className="text-lg font-black text-white mb-1">No agent yet</h2>
+          <p className="text-sm text-slate-500 mb-5">You haven&apos;t created an agent yet.</p>
+          <Link href="/create-agent" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/25 transition-colors">
+            <Sparkles size={14} /> Create My Agent
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  const meta = STYLE_META[agent.style as keyof typeof STYLE_META] ?? STYLE_META.secure
+  const agentId = agent.id
+
+  const myEvents = (selectedPartner ? convEvents : events.filter(e =>
+    !MILESTONE_TYPES.has(e.event_type) &&
+    ((e.agent_id === agentId && !!e.metadata?.to_agent_id) || e.metadata?.to_agent_id === agentId)
+  ))
+    .filter(e => !MILESTONE_TYPES.has(e.event_type))
+    .slice(0, 200)
+    .reverse()
+
+  const thoughtEvents = events.filter(e => e.agent_id === agentId && e.event_type === 'reflect')
+  const avgHappiness  = activeRels.length
+    ? Math.round(activeRels.reduce((s, r) => s + r.happiness_score, 0) / activeRels.length)
+    : 0
+  const messageCount = events.filter(e => e.agent_id === agentId).length
+
+  return (
+    <div className="min-h-screen bg-arena-bg">
+      {/* Hero banner */}
+      <div className={`w-full h-36 relative`}
+        style={{ background: `linear-gradient(135deg, var(--tw-gradient-stops))` }}>
+        <div className={`absolute inset-0 ${meta.bg} opacity-60`} />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-arena-bg/60" />
+        <div className="absolute top-4 left-6 z-20">
+          <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-xs text-slate-300/80 hover:text-white transition-colors">
+            <ArrowLeft size={12} /> Back to Overview
+          </Link>
+        </div>
+        <div className="absolute top-4 right-6 z-20">
+          <button
+            onClick={() => supabase.auth.signOut().then(() => window.location.href = '/')}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            <LogOut size={12} /> Sign out
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-6">
+        {/* Profile header */}
+        <div className="flex items-end gap-4 -mt-8 mb-6">
+          <div className={`w-20 h-20 rounded-2xl shrink-0 border-2 ${meta.border} shadow-lg relative z-10
+            ${meta.bg} flex items-center justify-center text-4xl`}>
+            {meta.emoji}
+          </div>
+          <div className="pb-1 flex-1 min-w-0 relative z-10">
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h1 className="text-2xl font-black text-white tracking-tight">{agent.name}</h1>
+              <span className="text-slate-500 text-sm">{agent.age} · {agent.occupation}</span>
+              <span className="text-xs text-slate-500 italic">You</span>
+            </div>
+            <div className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.color} border ${meta.border}`}>
+              {meta.emoji} {meta.label} attachment
+            </div>
+          </div>
         </div>
 
-        <div className="bg-arena-card border border-arena-border rounded-2xl p-6">
-          {/* Not logged in */}
-          {!user && <LoginView />}
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+          <StatPill icon={Heart}         label="Active Connections"  value={activeRels.length}   color="text-rose-400" />
+          <StatPill icon={TrendingUp}    label="Avg Happiness"       value={`${avgHappiness}%`}  color="text-emerald-400" />
+          <StatPill icon={MessageCircle} label="Messages Sent"       value={messageCount}        color="text-sky-400" />
+          <StatPill icon={Zap}           label="Ended Relationships" value={endedRels.length}    color="text-amber-400" />
+        </div>
 
-          {/* Logged in, no agent */}
-          {user && !agent && (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-3">🎭</div>
-              <h2 className="text-lg font-black text-white mb-1">No agent yet</h2>
-              <p className="text-sm text-slate-500 mb-5">You haven&apos;t created an agent with this email.</p>
-              <Link href="/create-agent" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/25 transition-colors">
-                <Sparkles size={14} /> Create My Agent
-              </Link>
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 pb-16">
+
+          {/* Left column */}
+          <div className="lg:col-span-2 flex flex-col gap-4">
+
+            {/* Bio */}
+            <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Bio</div>
+              <p className="text-sm text-slate-300 leading-relaxed">{agent.bio}</p>
+              <EditSection agent={agent} onSaved={updates => setAgent(prev => prev ? { ...prev, ...updates } : prev)} />
             </div>
-          )}
 
-          {/* Logged in, has agent */}
-          {user && agent && (() => {
-            const meta     = STYLE_META[agent.style as keyof typeof STYLE_META] ?? STYLE_META.secure
-            const roleLabel = SHOW_ROLE_LABEL[agent.status] ?? 'Spectator'
-            return (
-              <div>
-                {/* Agent card */}
-                <Section title="Your Agent">
-                  <div className={`rounded-xl border ${meta.border} ${meta.bg} p-4 mb-3`}>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-xl ${meta.bg} border ${meta.border} shrink-0`}>
-                        {meta.emoji}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-white">{agent.name}</span>
-                          <span className="text-xs text-slate-500">{agent.age}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${meta.bg} ${meta.color} border ${meta.border}`}>{meta.label}</span>
-                        </div>
-                        <div className="text-xs text-slate-400">{agent.occupation}</div>
-                      </div>
-                      <span className="text-[10px] text-slate-500 shrink-0">{roleLabel}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed italic mb-2">&ldquo;{agent.bio}&rdquo;</p>
-                    {agent.interests?.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {agent.interests.map(i => <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-arena-muted text-slate-400">{i}</span>)}
-                      </div>
-                    )}
-                  </div>
-                  <EditSection agent={agent} onSaved={updates => setAgent(prev => prev ? { ...prev, ...updates } : prev)} />
-                </Section>
-
-                {/* Password */}
-                <Section title="Account">
-                  <PasswordSection />
-                </Section>
-
-                {/* Relationships */}
-                {rels.length > 0 && (
-                  <Section title={`Connections (${rels.length})`}>
-                    <div className="bg-arena-card border border-arena-border rounded-xl px-4 py-1">
-                      {rels.sort((a, b) => b.happiness_score - a.happiness_score).map(r => (
-                        <RelRow key={r.id} rel={r} agentId={agent.id} />
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Apply to show */}
-                <Section title="The Show">
-                  <ApplySection agent={agent} />
-                </Section>
+            {/* Attachment style */}
+            <div className={`rounded-2xl p-4 border ${meta.border} ${meta.bg}`}>
+              <div className={`text-[10px] uppercase tracking-widest mb-2 ${meta.color}`}>
+                {meta.emoji} {meta.label} Attachment
               </div>
-            )
-          })()}
+              <p className="text-xs text-slate-300 leading-relaxed">{STYLE_DESC[agent.style]}</p>
+            </div>
+
+            {/* Traits */}
+            {agent.traits?.length > 0 && (
+              <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Traits</div>
+                <div className="flex flex-wrap gap-2">
+                  {agent.traits.map(t => (
+                    <span key={t} className={`text-xs px-2.5 py-1 rounded-full font-medium ${meta.bg} ${meta.color} border ${meta.border}`}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connections */}
+            {loading ? (
+              <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+                <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-xl bg-arena-muted animate-pulse" />)}</div>
+              </div>
+            ) : activeRels.length > 0 ? (
+              <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Connections ({activeRels.length})</div>
+                <div className="space-y-2">
+                  {activeRels.sort((a, b) => b.happiness_score - a.happiness_score).map(rel => {
+                    const otherId = rel.agent_a_id === agentId ? rel.agent_b_id : rel.agent_a_id
+                    return (
+                      <RelCard key={rel.id} rel={rel} agentId={agentId} allAgents={allAgents}
+                        isSelected={selectedPartner === otherId}
+                        onSelect={() => { setSelectedPartner(otherId); loadConversation(agentId, otherId) }} />
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+                <p className="text-xs text-slate-600 italic text-center py-3">No active connections yet — check back soon</p>
+              </div>
+            )}
+
+            {/* Account */}
+            <PasswordSection />
+
+            {/* Apply to show */}
+            <ApplySection agent={agent} />
+          </div>
+
+          {/* Right column: conversations/thoughts */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+            <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex gap-1 bg-arena-muted rounded-xl p-1">
+                  <button onClick={() => setActiveTab('conversations')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
+                      ${activeTab === 'conversations' ? 'bg-arena-card text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                    Conversations
+                  </button>
+                  <button onClick={() => setActiveTab('thoughts')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
+                      ${activeTab === 'thoughts' ? 'bg-arena-card text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                    Personal Thoughts
+                  </button>
+                </div>
+                {activeTab === 'conversations' && (() => {
+                  const partner = selectedPartner ? allAgents.find(a => a.id === selectedPartner) : null
+                  const partnerMeta = partner ? STYLE_META[partner.style] : null
+                  return (
+                    <div className="flex items-center gap-2">
+                      {partner && partnerMeta && (
+                        <span className={`text-xs font-medium ${partnerMeta.color}`}>
+                          {partnerMeta.emoji} {partner.name}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                        Live
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {activeTab === 'conversations' && (
+                (loading || convLoading) ? (
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className={`flex gap-2 ${i % 2 === 0 ? '' : 'flex-row-reverse'}`}>
+                        <div className="w-6 h-6 rounded-full bg-arena-muted animate-pulse shrink-0" />
+                        <div className={`h-10 rounded-2xl bg-arena-muted animate-pulse ${i % 2 === 0 ? 'w-48' : 'w-36'}`} />
+                      </div>
+                    ))}
+                  </div>
+                ) : myEvents.length > 0 ? (
+                  <div className="space-y-1.5 max-h-[700px] overflow-y-auto pr-1 scroll-smooth">
+                    {myEvents.map((e, i) => {
+                      const prev = myEvents[i - 1]
+                      const currDate = new Date(e.created_at)
+                      const showDate = !prev || currDate.toDateString() !== new Date(prev.created_at).toDateString()
+                      const next = myEvents[i + 1]
+                      const showTime = !next || next.agent_id !== e.agent_id ||
+                        new Date(next.created_at).getTime() - currDate.getTime() > 5 * 60 * 1000
+                      return (
+                        <div key={e.id}>
+                          {showDate && <DateSeparator date={currDate} />}
+                          <MessageBubble event={e} agentId={agentId} allAgents={allAgents} showTime={showTime} />
+                        </div>
+                      )
+                    })}
+                    <div ref={chatBottomRef} />
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-600">
+                    <div className="text-3xl mb-2">{meta.emoji}</div>
+                    <p className="text-sm">{agent.name} hasn&apos;t had any conversations yet</p>
+                  </div>
+                )
+              )}
+
+              {activeTab === 'thoughts' && (
+                loading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-arena-muted animate-pulse" />)}
+                  </div>
+                ) : thoughtEvents.length > 0 ? (
+                  <div className="space-y-5 max-h-[700px] overflow-y-auto pr-1">
+                    {thoughtEvents.slice(0, 60).map(e => <ThoughtBubble key={e.id} event={e} />)}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-600">
+                    <div className="text-3xl mb-2">💭</div>
+                    <p className="text-sm">{agent.name} hasn&apos;t had a quiet moment yet</p>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
