@@ -266,8 +266,13 @@ export default function DashboardPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.email) {
-        const agentRes = await api.getMyAgent(user.email)
-        setHasAgent(!!agentRes?.data)
+        try {
+          const agentRes = await api.getMyAgent(user.email)
+          setHasAgent(agentRes?.data != null)
+        } catch {
+          // On any error, assume they have an agent (safer than showing the button)
+          setHasAgent(true)
+        }
       } else {
         setHasAgent(false)
       }
@@ -334,6 +339,11 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-black text-white tracking-tight">Live Arena</h1>
           <p className="text-sm text-slate-500 mt-0.5">Real-time attachment drama</p>
         </div>
+        {hasAgent === true && (
+          <Link href="/my-agent" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-sm font-semibold hover:bg-indigo-500/25 transition-colors shrink-0">
+            My Agent →
+          </Link>
+        )}
         {hasAgent === false && (
           <Link href="/create-agent" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/25 transition-colors shrink-0">
             <UserPlus size={14} /> Create My Agent
