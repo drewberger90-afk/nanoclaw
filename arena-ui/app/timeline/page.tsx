@@ -3,23 +3,23 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase, api } from '@/lib/supabase'
 import { EVENT_META, STATIC_AGENTS, STYLE_META } from '@/types/arena'
-import type { ArenaEvent } from '@/types/arena'
+import type { ArenaEvent, Agent } from '@/types/arena'
 import { Filter } from 'lucide-react'
 
 const ALL_TYPES = Object.keys(EVENT_META)
 
-function agentById(id: string | undefined) {
-  return id ? STATIC_AGENTS.find(a => a.id === id) ?? null : null
+function agentById(id: string | undefined, allAgents: Agent[]) {
+  return id ? allAgents.find(a => a.id === id) ?? null : null
 }
 
-function EventCard({ event }: { event: ArenaEvent }) {
+function EventCard({ event, allAgents }: { event: ArenaEvent; allAgents: Agent[] }) {
   const meta    = EVENT_META[event.event_type] ?? { label: event.event_type, icon: '💬', color: 'text-slate-400' }
   const ts      = new Date(event.created_at)
   const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' })
   const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-  const from   = agentById(event.agent_id)
-  const to     = agentById(event.metadata?.to_agent_id)
+  const from   = agentById(event.agent_id, allAgents)
+  const to     = agentById(event.metadata?.to_agent_id, allAgents)
   const fromMeta = from ? STYLE_META[from.style] : null
   const toMeta   = to   ? STYLE_META[to.style]   : null
 
@@ -88,11 +88,18 @@ export default function TimelinePage() {
   const [loading,     setLoading]     = useState(true)
   const [showFilter,  setShowFilter]  = useState(false)
   const [newCount,    setNewCount]    = useState(0)
+  const [profiles,    setProfiles]    = useState<Agent[]>([])
+
+  const allAgents: Agent[] = [
+    ...STATIC_AGENTS,
+    ...profiles.filter(p => !STATIC_AGENTS.find(s => s.id === p.id)),
+  ]
 
   const loadEvents = useCallback(async () => {
     try {
-      const res = await api.getEvents(500)
-      if (Array.isArray(res?.data)) setEvents(res.data)
+      const [evRes, prRes] = await Promise.all([api.getEvents(500), api.getProfiles()])
+      if (Array.isArray(evRes?.data)) setEvents(evRes.data)
+      if (Array.isArray(prRes?.data)) setProfiles(prRes.data)
     } catch (e) {
       console.error('loadEvents failed', e)
     } finally {
@@ -180,7 +187,7 @@ export default function TimelinePage() {
         </div>
       ) : displayed.length > 0 ? (
         <div>
-          {displayed.map(e => <EventCard key={e.id} event={e} />)}
+          {displayed.map(e => <EventCard key={e.id} event={e} allAgents={allAgents} />)}
         </div>
       ) : (
         <div className="text-center py-20 text-slate-600">

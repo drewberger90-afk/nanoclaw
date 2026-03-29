@@ -821,12 +821,17 @@ export default function WorldPage() {
     return () => { supabase.removeChannel(ch) }
   }, [load])
 
+  const allAgents: Agent[] = [
+    ...STATIC_AGENTS,
+    ...profiles.filter(p => !STATIC_AGENTS.find(s => s.id === p.id)),
+  ]
+
   const agentLocations = computeAgentLocations(profiles)
   const activeRels     = relationships.filter(r => !['strangers','broken_up','divorced'].includes(r.stage))
   const coupleRels     = relationships.filter(r => ['dating','committed','engaged','married'].includes(r.stage))
 
   const agentsByLoc: Record<string, Agent[]> = {}
-  STATIC_AGENTS.forEach(agent => {
+  allAgents.forEach(agent => {
     const loc = agentLocations[agent.id] ?? `home_${agent.id}`
     ;(agentsByLoc[loc] ??= []).push(agent)
   })
@@ -839,7 +844,7 @@ export default function WorldPage() {
     (e.metadata?.to_agent_id && agentIdsHere.has(e.metadata.to_agent_id))
   ).slice(0, 25)
 
-  const hoveredData = hoveredAgent ? STATIC_AGENTS.find(a => a.id === hoveredAgent) ?? null : null
+  const hoveredData = hoveredAgent ? allAgents.find(a => a.id === hoveredAgent) ?? null : null
   const hoveredRels = hoveredAgent ? activeRels.filter(r => r.agent_a_id === hoveredAgent || r.agent_b_id === hoveredAgent) : []
 
   return (
@@ -892,7 +897,7 @@ export default function WorldPage() {
             </radialGradient>
           )}
           {/* Clip paths for agent avatars */}
-          {STATIC_AGENTS.map(agent => {
+          {allAgents.map(agent => {
             const locId = agentLocations[agent.id] ?? `home_${agent.id}`
             let ax: number, ay: number
             if (locId.startsWith('home_')) {
@@ -1002,7 +1007,7 @@ export default function WorldPage() {
         <path d={`M 784 468 Q 720 418 658 365`} stroke="#1e1c2e" strokeWidth={4} fill="none" opacity={0.5} />
 
         {/* ── Individual agent homes ── */}
-        {STATIC_AGENTS.map(agent => {
+        {allAgents.map(agent => {
           const hd = AGENT_HOME_DATA[agent.id]
           if (!hd) return null
           const isHome = (agentLocations[agent.id] ?? `home_${agent.id}`).startsWith('home_')
@@ -1012,7 +1017,7 @@ export default function WorldPage() {
         })}
 
         {/* ── Agent avatars in SVG ── */}
-        {STATIC_AGENTS.map(agent => {
+        {allAgents.map(agent => {
           const locId = agentLocations[agent.id] ?? `home_${agent.id}`
           let ax: number, ay: number
           if (locId.startsWith('home_')) {
@@ -1030,7 +1035,7 @@ export default function WorldPage() {
             ay = loc.y - 80
           }
           const atHome   = locId.startsWith('home_')
-          const agentIdx = STATIC_AGENTS.indexOf(agent)
+          const agentIdx = allAgents.indexOf(agent)
           const meta     = STYLE_META[agent.style]
           const url      = avatars[agent.id]
           const hasDrama = activeRels.some(r =>
@@ -1133,7 +1138,7 @@ export default function WorldPage() {
 
       {/* ── Neighborhood labels ── */}
       {NEIGHBORHOODS.map(n => {
-        const homeCnt = STATIC_AGENTS.filter(a => AGENT_HOME_DATA[a.id]?.neighborhood === n.id && (agentLocations[a.id] ?? `home_${a.id}`).startsWith('home_')).length
+        const homeCnt = allAgents.filter(a => AGENT_HOME_DATA[a.id]?.neighborhood === n.id && (agentLocations[a.id] ?? `home_${a.id}`).startsWith('home_')).length
         return (
           <div key={n.id} className="absolute -translate-x-1/2 pointer-events-none text-center"
             style={{ left: `${(n.x / VW) * 100}%`, top: `${(545 / VH) * 100}%` }}>
