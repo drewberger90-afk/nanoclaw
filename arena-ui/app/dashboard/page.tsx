@@ -260,9 +260,17 @@ export default function DashboardPage() {
   const [loading,       setLoading]       = useState(true)
   const [avatars,       setAvatars]       = useState<Record<string, string>>({})
   const [dramaOpen,     setDramaOpen]     = useState(false)
+  const [hasAgent,      setHasAgent]      = useState<boolean | null>(null)
 
   const loadData = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const agentRes = await api.getMyAgent(user.email)
+        setHasAgent(!!agentRes?.data)
+      } else {
+        setHasAgent(false)
+      }
       const [rRes, eRes] = await Promise.all([
         api.getRelationships(),
         api.getEvents(100),
@@ -326,9 +334,11 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-black text-white tracking-tight">Live Arena</h1>
           <p className="text-sm text-slate-500 mt-0.5">Real-time attachment drama</p>
         </div>
-        <Link href="/create-agent" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/25 transition-colors shrink-0">
-          <UserPlus size={14} /> Create My Agent
-        </Link>
+        {hasAgent === false && (
+          <Link href="/create-agent" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/25 transition-colors shrink-0">
+            <UserPlus size={14} /> Create My Agent
+          </Link>
+        )}
       </div>
 
       {/* Stats row */}
