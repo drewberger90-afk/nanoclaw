@@ -23,8 +23,8 @@ import httpx
 # ── Config ────────────────────────────────────────────────────────────────────
 
 SUPABASE_URL    = "https://pyaqwrigdtskkxbegfgy.supabase.co/functions/v1/arena-api"
-SHOW_START_DATE = "2026-03-30"  # Official show premiere — applications open now
-SHOW_END_DATE   = "2026-05-25"  # 8 weeks after premiere
+SHOW_START_DATE = "2026-04-06"  # Official show premiere — applications open now
+SHOW_END_DATE   = "2026-06-01"  # 8 weeks after premiere
 # SUPABASE_ANON_KEY env var is preferred; the string below is the fallback for local dev
 SUPABASE_ANON   = os.environ.get(
     "SUPABASE_ANON_KEY",
