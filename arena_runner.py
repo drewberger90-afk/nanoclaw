@@ -1110,10 +1110,12 @@ def record(rel, agent_id, etype, content=""):
 
 def push_rel(rel):
     supabase("update_relationship", {
-        "agent_a_id":      rel["ids"][0],
-        "agent_b_id":      rel["ids"][1],
-        "stage":           rel["stage"],
-        "happiness_score": rel["happiness"],
+        "agent_a_id":        rel["ids"][0],
+        "agent_b_id":        rel["ids"][1],
+        "stage":             rel["stage"],
+        "happiness_score":   rel["happiness"],
+        "interaction_count": rel["interaction_count"],
+        "memories":          rel.get("memories", []),
     })
 
 def gram_apply_boost(poster, reactor, boost):
@@ -1342,7 +1344,7 @@ def say(agent, situation, other=None, vote_ctx=None, max_tokens=180, replying_to
     system = (
         f"You are {agent['name']}, {agent['age']}, {agent['occupation']}.\n\n"
         f"{STYLE_VOICE[agent['style']]}\n"
-        f"YOUR SPECIFIC VOICE: {AGENT_VOICE[agent['id']]}\n"
+        f"YOUR SPECIFIC VOICE: {AGENT_VOICE.get(agent['id'], 'Be natural, authentic, and true to your bio and personality above.')}\n"
         f"Bio: {agent['bio']}\n"
         f"Quirks: {agent['quirks']}\n"
         f"Status: {agent['status']} | Mood: {agent['mood']}"
@@ -1781,6 +1783,7 @@ def do_first_contact(agent, target):
 
     rel["stage"]     = "matched"
     rel["happiness"] = min(100, rel["happiness"] + 18)   # v2.6: +18 (was +12)
+    remember(rel, f"{agent['name']} opened with: \"{line[:80]}\"")
     push_rel(rel)
     record(rel, agent["id"], "icebreaker", line)
     log(f"{agent['name']} → {target['name']} (first contact, compat {sc})")
@@ -1832,6 +1835,7 @@ def do_reply(agent):
     tg_dialog(bot_for(agent), agent["name"], from_agent["name"], reply,
               tag=stage_tag(agent, from_agent), etype="icebreaker")
     rel["happiness"] = min(100, rel["happiness"] + 22)   # v2.6: +22 (was +15)
+    remember(rel, f"{from_agent['name']} said: \"{their_msg[:70]}\" — {agent['name']} replied: \"{reply[:70]}\"")
     push_rel(rel)
     record(rel, agent["id"], "icebreaker", reply)
     log(f"{agent['name']} replied to {from_agent['name']}")
@@ -1893,6 +1897,7 @@ def do_conversation(agent, target):
     momentum = (10 if sc_now >= 60 and silence_elapsed(rel) < 600 else
                 5  if silence_elapsed(rel) < 600 else 0)
     rel["happiness"] = min(100, rel["happiness"] + 28 + momentum)  # was +20+8
+    remember(rel, f"{agent['name']} & {target['name']} talked: \"{la[:60]}\" / \"{lb[:60]}\"")
     record(rel, agent["id"], "small_talk", f"{la} | {lb}")
     push_rel(rel)
     log(f"{agent['name']} ↔ {target['name']} (depth {depth}, h={rel['happiness']})")
@@ -3650,6 +3655,7 @@ def _run_agent_turn(agent: dict):
     finally:
         with _in_flight_lock:
             _in_flight.discard(agent["id"])
+        _reschedule(agent["id"])
 
 
 # ── Turn loop ─────────────────────────────────────────────────────────────────
@@ -3762,6 +3768,7 @@ def restore_rels():
         rel["stage"]             = row.get("stage", "strangers")
         rel["happiness"]         = int(row.get("happiness_score") or 0)
         rel["interaction_count"] = int(row.get("interaction_count") or 0)
+        rel["memories"]          = row.get("memories") or []
         rels[k] = rel
         restored += 1
     log(f"Restored {restored} relationships from Supabase (happiness preserved)")

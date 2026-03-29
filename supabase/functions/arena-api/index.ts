@@ -142,13 +142,15 @@ Deno.serve(async (req) => {
 
       // ── update_relationship ───────────────────────────────────────────────────
       case 'update_relationship': {
-        const { agent_a_id, agent_b_id, stage, happiness_score, compatibility_score } =
+        const { agent_a_id, agent_b_id, stage, happiness_score, compatibility_score, interaction_count, memories } =
           params as {
             agent_a_id: string
             agent_b_id: string
             stage?: string
             happiness_score?: number
             compatibility_score?: number
+            interaction_count?: number
+            memories?: unknown[]
           }
         if (!agent_a_id || !agent_b_id)
           return json({ error: 'agent_a_id and agent_b_id are required' }, 400)
@@ -174,6 +176,8 @@ Deno.serve(async (req) => {
         if (stage !== undefined)               updates.stage = stage
         if (happiness_score !== undefined)     updates.happiness_score = happiness_score
         if (compatibility_score !== undefined) updates.compatibility_score = compatibility_score
+        if (interaction_count !== undefined)   updates.interaction_count = interaction_count
+        if (memories !== undefined)            updates.memories = memories
 
         const { data, error } = await supabase
           .from('relationships')
