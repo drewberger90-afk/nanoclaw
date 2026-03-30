@@ -1827,10 +1827,30 @@ def do_reply(agent):
     if not rel:
         return False
 
-    ctx = (
-        f"{from_agent['name']} just sent you their first message: \"{their_msg[:120]}\" "
-        f"Context: {rel_summary(rel)}. Reply directly — add something new, don't echo."
-    )
+    depth = rel["interaction_count"]
+    if depth <= 1:
+        ctx = (
+            f"{from_agent['name']} just sent you their first message: \"{their_msg[:120]}\" "
+            f"Context: {rel_summary(rel)}. Reply directly — add something new, don't echo."
+        )
+    elif depth <= 6:
+        ctx = (
+            f"{from_agent['name']} said to you: \"{their_msg[:120]}\" "
+            f"You've exchanged a couple of messages. {rel_summary(rel)}. "
+            f"Follow up naturally — address them by name."
+        )
+    elif depth <= 14:
+        ctx = (
+            f"{from_agent['name']} said: \"{their_msg[:120]}\" "
+            f"You've been talking for a bit. {rel_summary(rel)}. "
+            f"Reply warmly — you have a real sense of each other now."
+        )
+    else:
+        ctx = (
+            f"{from_agent['name']} said: \"{their_msg[:120]}\" "
+            f"You have real history. {rel_summary(rel)}. "
+            f"Reply honestly — full emotional range, address them by name."
+        )
     reply = say(agent, ctx, from_agent, max_tokens=160, replying_to=their_msg)
     tg_dialog(bot_for(agent), agent["name"], from_agent["name"], reply,
               tag=stage_tag(agent, from_agent), etype="icebreaker")

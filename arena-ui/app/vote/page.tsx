@@ -200,7 +200,8 @@ export default function VotePage() {
   const [loading,     setLoading]     = useState(true)
   const [contestants, setContestants] = useState<string[]>([])
   const [coupled,     setCoupled]     = useState<string[]>([])
-  const fpRef = useRef<string>('')
+  const fpRef    = useRef<string>('')
+  const votingRef = useRef(false)
 
   useEffect(() => { fpRef.current = getOrCreateFingerprint() }, [])
 
@@ -242,22 +243,25 @@ export default function VotePage() {
   }, [loadRounds, loadAgents])
 
   const handleVote = useCallback(async (roundId: string, choice: string) => {
-    if (voting || myVotes[roundId]) return
+    if (votingRef.current || myVotes[roundId]) return
+    votingRef.current = true
     setVoting(true)
     try {
       const res = await api.castBallot({ round_id: roundId, choice, voter_fingerprint: fpRef.current })
-      if (res?.already_voted || res?.data) {
+      if (res?.already_voted) {
+        // Mark whichever choice they actually voted for (server returns it on duplicate)
+        const actualChoice = res.choice ?? choice
+        setMyVotes(prev => ({ ...prev, [roundId]: actualChoice }))
+      } else if (res?.data) {
         setMyVotes(prev => ({ ...prev, [roundId]: choice }))
-        if (res?.data) {
-          setCounts(prev => ({
-            ...prev,
-            [roundId]: { ...prev[roundId], [choice]: (prev[roundId]?.[choice] ?? 0) + 1 },
-          }))
-        }
+        setCounts(prev => ({
+          ...prev,
+          [roundId]: { ...prev[roundId], [choice]: (prev[roundId]?.[choice] ?? 0) + 1 },
+        }))
       }
     } catch (e) { console.error('vote failed', e) }
-    setVoting(false)
-  }, [voting, myVotes])
+    finally { votingRef.current = false; setVoting(false) }
+  }, [myVotes])
 
   const byType = (t: string) => rounds.find(r => r.vote_type === t) ?? null
 

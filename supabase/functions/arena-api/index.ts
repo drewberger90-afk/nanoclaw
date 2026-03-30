@@ -548,7 +548,14 @@ Deno.serve(async (req) => {
           .from('show_ballots')
           .insert({ round_id, choice, voter_fingerprint, source: source ?? 'ui' })
           .select().single()
-        if (error?.code === '23505') return json({ already_voted: true })
+        if (error?.code === '23505') {
+          // Return their actual previous vote choice so UI shows the right selection
+          const { data: existing } = await supabase
+            .from('show_ballots').select('choice')
+            .eq('round_id', round_id).eq('voter_fingerprint', voter_fingerprint)
+            .single()
+          return json({ already_voted: true, choice: existing?.choice ?? choice })
+        }
         if (error) return json({ error: error.message }, 500)
         return json({ data })
       }
