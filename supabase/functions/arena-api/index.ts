@@ -58,16 +58,17 @@ Deno.serve(async (req) => {
 
       // ── get_events ────────────────────────────────────────────────────────────
       case 'get_events': {
-        const { limit = 100, event_type, agent_id, relationship_id } =
-          params as { limit?: number; event_type?: string; agent_id?: string; relationship_id?: string }
+        const { limit = 100, event_type, event_types, agent_id, relationship_id } =
+          params as { limit?: number; event_type?: string; event_types?: string[]; agent_id?: string; relationship_id?: string }
         let q = supabase
           .from('events')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(Math.min(Number(limit), 500))
-        if (event_type)     q = q.eq('event_type', event_type)
-        if (agent_id)       q = q.eq('agent_id', agent_id)
-        if (relationship_id) q = q.eq('relationship_id', relationship_id)
+          .limit(Math.min(Number(limit), 1000))
+        if (event_types && event_types.length > 0) q = q.in('event_type', event_types)
+        else if (event_type)  q = q.eq('event_type', event_type)
+        if (agent_id)         q = q.eq('agent_id', agent_id)
+        if (relationship_id)  q = q.eq('relationship_id', relationship_id)
         const { data, error } = await q
         if (error) return json({ error: error.message }, 500)
         return json({ data })

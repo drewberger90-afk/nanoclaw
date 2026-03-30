@@ -1967,8 +1967,8 @@ def do_fight(agent, target):
     )
     la, lb = run_exchange(agent, target, ctx,
                           label="FIGHT", tag_fn=lambda: stage_tag(agent, target), turns=3, etype="fight")
-    rel["happiness"] = max(0, rel["happiness"] - 28)
-    rel["tension"]   = min(100, rel.get("tension", 0) + 35)
+    rel["happiness"] = max(0, rel["happiness"] - 20)
+    rel["tension"]   = min(100, rel.get("tension", 0) + 30)
     agent["mood"] = target["mood"] = "upset"
     record(rel, agent["id"], "fight", f"{la} | {lb}")
     push_rel(rel)
@@ -1985,8 +1985,8 @@ def do_reconcile(agent, target):
     )
     la, lb = run_exchange(agent, target, ctx,
                           tag_fn=lambda: stage_tag(agent, target), turns=3, etype="make_up")
-    rel["happiness"]  = min(100, rel["happiness"] + 18)
-    rel["tension"]    = max(0, rel.get("tension", 0) - 20)
+    rel["happiness"]  = min(100, rel["happiness"] + 25)
+    rel["tension"]    = max(0, rel.get("tension", 0) - 25)
     rel["ghosted_by"] = None
     agent["mood"]     = "hopeful"
     record(rel, agent["id"], "make_up", f"{la} | {lb}")

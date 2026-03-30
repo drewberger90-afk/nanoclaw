@@ -260,6 +260,7 @@ export default function DashboardPage() {
   const [loading,       setLoading]       = useState(true)
   const [avatars,       setAvatars]       = useState<Record<string, string>>({})
   const [dramaOpen,     setDramaOpen]     = useState(false)
+  const [dramaEvents,   setDramaEvents]   = useState<ArenaEvent[]>([])
   const [hasAgent,      setHasAgent]      = useState<boolean | null>(null)
   const [myAgentId,     setMyAgentId]     = useState<string | null>(null)
   const [hasUnread,     setHasUnread]     = useState(false)
@@ -289,12 +290,14 @@ export default function DashboardPage() {
       } else {
         setHasAgent(false)
       }
-      const [rRes, eRes] = await Promise.all([
+      const [rRes, eRes, dRes] = await Promise.all([
         api.getRelationships(),
         api.getEvents(100),
+        api.getDramaEvents(200),
       ])
       if (Array.isArray(rRes?.data))  setRelationships(rRes.data)
       if (Array.isArray(eRes?.data))  setEvents(eRes.data)
+      if (Array.isArray(dRes?.data))  setDramaEvents(dRes.data)
     } catch (e) {
       console.error('loadData failed', e)
     } finally {
@@ -320,10 +323,15 @@ export default function DashboardPage() {
     loadData()
 
     // Supabase realtime — subscribe to events and relationships tables
+    const DRAMA_TYPES = new Set(['fight', 'ghost', 'divorce', 'jealousy', 'no_contact_test'])
     const channel = supabase
       .channel('arena-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' },
-        payload => setEvents(prev => [payload.new as ArenaEvent, ...prev.slice(0, 49)])
+        payload => {
+          const e = payload.new as ArenaEvent
+          setEvents(prev => [e, ...prev.slice(0, 49)])
+          if (DRAMA_TYPES.has(e.event_type)) setDramaEvents(prev => [e, ...prev.slice(0, 199)])
+        }
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'relationships' },
         () => api.getRelationships().then(r => { if (Array.isArray(r?.data)) setRelationships(r.data) })
@@ -350,9 +358,7 @@ export default function DashboardPage() {
   const avgHappiness = activeRels.length
     ? Math.round(activeRels.reduce((s, r) => s + r.happiness_score, 0) / activeRels.length)
     : 0
-  const DRAMA_TYPES = new Set(['fight', 'ghost', 'divorce', 'jealousy', 'no_contact_test'])
-  const dramaEvents = events.filter(e => DRAMA_TYPES.has(e.event_type))
-  const drama       = dramaEvents.length
+  const drama = dramaEvents.length
 
   return (
     <div className="min-h-screen bg-arena-bg px-6 py-6">

@@ -25,6 +25,7 @@ export const api = {
   getProfiles:        ()                                                                    => arenaApi('get_profiles'),
   getRelationships:   ()                                                                    => arenaApi('get_relationships'),
   getEvents:          (limit = 100)                                                         => arenaApi('get_events', { limit }),
+  getDramaEvents:     (limit = 200)                                                         => arenaApi('get_events', { event_types: ['fight', 'ghost', 'divorce', 'jealousy', 'no_contact_test'], limit }),
   getAgentEvents:     (agentId: string, limit = 300)                                        => arenaApi('get_agent_events', { agent_id: agentId, limit }),
   getConversationEvents: (agentAId: string, agentBId: string, limit = 200)                 => arenaApi('get_conversation_events', { agent_a_id: agentAId, agent_b_id: agentBId, limit }),
   getVotes:           (limit = 20)                                                          => arenaApi('get_votes', { limit }),
