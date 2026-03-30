@@ -2270,7 +2270,10 @@ def do_agentgram_post(agent):
     location = random.choice(GRAM_SPOTS.get(home, ["the arena house"]))
 
     # Build image prompt and generate image — skip post entirely if it fails
-    appearance   = GRAM_APPEARANCE.get(agent["id"], "person")
+    _g = agent.get("gender", "")
+    _gender_word = "man" if _g in ("m", "male") else "woman" if _g in ("f", "female") else "person"
+    _default_appearance = f"{_gender_word} {agent.get('age', 25)}, {agent.get('occupation', '')}"
+    appearance   = GRAM_APPEARANCE.get(agent["id"], _default_appearance)
     image_prompt = (
         f"photo of {appearance}, at {location}, "
         f"{POST_TYPE_IMG_STYLE[ptype]}, photorealistic, film grain, no text, no watermark, high quality"
