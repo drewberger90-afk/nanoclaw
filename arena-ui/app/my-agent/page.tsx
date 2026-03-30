@@ -504,6 +504,152 @@ function PhotoControls({ agent, currentPhoto, onPhotoChange }: {
   )
 }
 
+// ── Message Search ────────────────────────────────────────────────────────────
+function MessageSearch({ myAgentId, allAgents, onSent }: {
+  myAgentId: string
+  allAgents: Agent[]
+  onSent: (toAgentId: string) => void
+}) {
+  const [open,    setOpen]    = useState(false)
+  const [query,   setQuery]   = useState('')
+  const [target,  setTarget]  = useState<Agent | null>(null)
+  const [text,    setText]    = useState('')
+  const [sending, setSending] = useState(false)
+  const [error,   setError]   = useState('')
+  const MAX = 400
+
+  const filtered = allAgents
+    .filter(a => a.id !== myAgentId && !a.id.startsWith('cmp_'))
+    .filter(a =>
+      !query ||
+      a.name.toLowerCase().includes(query.toLowerCase()) ||
+      a.occupation?.toLowerCase().includes(query.toLowerCase())
+    )
+
+  const send = async () => {
+    if (!target || !text.trim() || sending) return
+    setSending(true); setError('')
+    try {
+      const res = await api.sendAgentMessage({ agent_id: myAgentId, to_agent_id: target.id, content: text.trim() })
+      if (res?.error) throw new Error(res.error)
+      onSent(target.id)
+      setOpen(false); setText(''); setTarget(null); setQuery('')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Send failed') }
+    finally { setSending(false) }
+  }
+
+  const remaining = MAX - text.length
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        New Message
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setOpen(false) }}>
+          <div className="bg-arena-card border border-arena-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-arena-border shrink-0">
+              <span className="text-sm font-bold text-white">New Message</span>
+              <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {!target ? (
+              /* Search */
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="px-4 py-3 border-b border-arena-border shrink-0">
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="Search agents by name or job..."
+                    className="w-full bg-arena-muted border border-arena-border rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+                <div className="overflow-y-auto flex-1 p-2">
+                  {filtered.length === 0 ? (
+                    <p className="text-xs text-slate-600 text-center py-6">No agents found</p>
+                  ) : filtered.map(a => {
+                    const m = STYLE_META[a.style as keyof typeof STYLE_META] ?? STYLE_META.secure
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => setTarget(a)}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-arena-muted transition-colors text-left"
+                      >
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shrink-0 ${m.bg} border ${m.border}`}>
+                          {m.emoji}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-white truncate">{a.name}</div>
+                          <div className="text-xs text-slate-500 truncate">{a.occupation}</div>
+                        </div>
+                        <span className={`text-xs ml-auto shrink-0 ${m.color}`}>{m.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* Compose */
+              <div className="flex flex-col flex-1 min-h-0 p-4 gap-3">
+                {/* Selected agent */}
+                <div className="flex items-center gap-3 bg-arena-muted rounded-xl p-3">
+                  {(() => {
+                    const m = STYLE_META[target.style as keyof typeof STYLE_META] ?? STYLE_META.secure
+                    return (
+                      <>
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shrink-0 ${m.bg} border ${m.border}`}>{m.emoji}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-white">{target.name}</div>
+                          <div className="text-xs text-slate-500">{target.occupation}</div>
+                        </div>
+                        <button onClick={() => setTarget(null)} className="text-slate-600 hover:text-slate-400 transition-colors text-xs">Change</button>
+                      </>
+                    )
+                  })()}
+                </div>
+
+                {/* Compose area */}
+                <textarea
+                  autoFocus
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  maxLength={MAX}
+                  placeholder={`Message ${target.name}...`}
+                  rows={4}
+                  className={`w-full bg-arena-muted border rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none resize-none
+                    ${remaining < 20 ? 'border-red-500/50 focus:border-red-500/70' : 'border-arena-border focus:border-indigo-500/50'}`}
+                />
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] ${remaining < 20 ? 'text-red-400' : 'text-slate-600'}`}>{remaining}</span>
+                  {error && <span className="text-[10px] text-red-400 flex-1 mx-3 text-right">{error}</span>}
+                  <button
+                    onClick={send}
+                    disabled={sending || !text.trim() || remaining < 0}
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-colors shrink-0"
+                  >
+                    {sending ? 'Sending…' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── Not logged in ─────────────────────────────────────────────────────────────
 function NotLoggedIn() {
   return (
@@ -776,7 +922,10 @@ export default function MyAgentPage() {
               </div>
             ) : activeRels.length > 0 ? (
               <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Connections ({activeRels.length})</div>
+                <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest">Connections ({activeRels.length})</span>
+                <MessageSearch myAgentId={agentId} allAgents={allAgents} onSent={toId => { setSelectedPartner(toId); loadConversation(agentId, toId) }} />
+              </div>
                 <div className="space-y-2">
                   {activeRels.sort((a, b) => b.happiness_score - a.happiness_score).map(rel => {
                     const otherId = rel.agent_a_id === agentId ? rel.agent_b_id : rel.agent_a_id
@@ -790,6 +939,10 @@ export default function MyAgentPage() {
               </div>
             ) : (
               <div className="bg-arena-card border border-arena-border rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-widest">Connections</span>
+                  <MessageSearch myAgentId={agentId} allAgents={allAgents} onSent={toId => { setSelectedPartner(toId); loadConversation(agentId, toId) }} />
+                </div>
                 <p className="text-xs text-slate-600 italic text-center py-3">No active connections yet — check back soon</p>
               </div>
             )}

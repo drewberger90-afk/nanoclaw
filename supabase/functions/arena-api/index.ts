@@ -97,12 +97,20 @@ Deno.serve(async (req) => {
 
       // ── get_profiles ─────────────────────────────────────────────────────────
       case 'get_profiles': {
-        const { data, error } = await supabase
-          .from('agents')
-          .select('*')
-          .order('name')
-        if (error) return json({ error: error.message }, 500)
-        return json({ data })
+        const [aiRes, uaRes] = await Promise.all([
+          supabase.from('agents').select('*').order('name'),
+          supabase.from('user_agents').select('id,name,age,occupation,style,bio,traits,interests,status')
+            .eq('status', 'active'),
+        ])
+        if (aiRes.error) return json({ error: aiRes.error.message }, 500)
+        const aiAgents = aiRes.data ?? []
+        // Include active user agents (exclude companions — id starts with 'cmp_')
+        const userAgents = (uaRes.data ?? [])
+          .filter((u: { id: string }) => !u.id.startsWith('cmp_'))
+          .map((u: Record<string, unknown>) => ({
+            ...u, happiness: 50, mood: 'neutral', status: 'single', is_user_created: true,
+          }))
+        return json({ data: [...aiAgents, ...userAgents] })
       }
 
       // ── get_relationships ─────────────────────────────────────────────────────
