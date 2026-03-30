@@ -1,5 +1,67 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// ── Content moderation helpers ────────────────────────────────────────────────
+
+const MAX_MSG_LEN = 400
+const MSG_RATE_LIMIT = 5       // max messages
+const MSG_RATE_WINDOW_MS = 5 * 60 * 1000  // per 5 minutes
+
+// Keyword blocklist — severe terms only, checked before LLM to avoid unnecessary API calls.
+// Uses word-boundary regex so partial matches in normal words don't trigger.
+const BLOCKED_PATTERNS = [
+  /\bkill\s+yourself\b/i,
+  /\bkys\b/i,
+  /\bkill\s+u\b/i,
+  /\bi'?ll\s+kill\b/i,
+  /\bi'?m\s+going\s+to\s+kill\b/i,
+  /\bdelete\s+yourself\b/i,
+  /\bn[i1][g9][g9][e3]r\b/i,
+  /\bf[a@][g9][g9][o0]t\b/i,
+  /\bc[u*]nt\b/i,
+  /\bch[i1]nk\b/i,
+  /\bsp[i1][c¢]k\b/i,
+  /\bk[i1]ke\b/i,
+]
+
+function isBlockedByKeyword(text: string): boolean {
+  return BLOCKED_PATTERNS.some(p => p.test(text))
+}
+
+async function moderateWithLLM(content: string): Promise<boolean> {
+  const key = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!key) return false  // no key — skip LLM check, rely on other layers
+
+  const prompt =
+    'You are a content moderator for a dating reality show app. Reply with only ALLOWED or BLOCKED.\n\n' +
+    'BLOCK if the message contains: explicit sexual descriptions, threats or violent language, ' +
+    'hate speech or slurs, personal contact info (phone numbers, addresses, social handles), or pure spam/gibberish.\n\n' +
+    'ALLOW if the message is: romantic, flirtatious (non-explicit), emotional, dramatic, playful, ' +
+    'witty, or normal conversation — even if edgy or intense.\n\n' +
+    `Message: "${content.slice(0, 300)}"`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 10,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    if (!res.ok) return false  // on API error, allow (don't block on infra issues)
+    const data = await res.json()
+    const verdict = (data?.content?.[0]?.text ?? '').trim().toUpperCase()
+    return verdict === 'BLOCKED'
+  } catch {
+    return false  // on network error, allow
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -610,8 +672,33 @@ Deno.serve(async (req) => {
           params as { agent_id: string; to_agent_id: string; content: string; relationship_id?: string }
         if (!agent_id || !to_agent_id || !content)
           return json({ error: 'agent_id, to_agent_id, and content are required' }, 400)
+
+        // ── Layer 2a: character limit ──────────────────────────────────────────
+        const trimmed = content.trim()
+        if (trimmed.length === 0) return json({ error: 'Message is empty' }, 400)
+        if (content.length > MAX_MSG_LEN)
+          return json({ error: `Message too long (max ${MAX_MSG_LEN} characters)` }, 400)
+
+        // ── Layer 2b: rate limit ───────────────────────────────────────────────
+        const windowStart = new Date(Date.now() - MSG_RATE_WINDOW_MS).toISOString()
+        const { count } = await supabase.from('events')
+          .select('*', { count: 'exact', head: true })
+          .eq('agent_id', agent_id)
+          .eq('metadata->>human_sent', 'true')
+          .gt('created_at', windowStart)
+        if ((count ?? 0) >= MSG_RATE_LIMIT)
+          return json({ error: 'Sending too fast — slow down a bit' }, 429)
+
+        // ── Layer 2c: keyword blocklist ────────────────────────────────────────
+        if (isBlockedByKeyword(trimmed))
+          return json({ error: 'Message not allowed' }, 400)
+
+        // ── Layer 3: LLM moderation (skipped if ANTHROPIC_API_KEY not set) ────
+        const blocked = await moderateWithLLM(trimmed)
+        if (blocked) return json({ error: 'Message not allowed' }, 400)
+
         const { data, error } = await supabase.from('events')
-          .insert({ agent_id, event_type: 'icebreaker', content,
+          .insert({ agent_id, event_type: 'icebreaker', content: trimmed,
                     relationship_id: relationship_id ?? null,
                     metadata: { to_agent_id, human_sent: true } })
           .select().single()

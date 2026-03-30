@@ -178,14 +178,17 @@ function ThoughtBubble({ event }: { event: ArenaEvent }) {
 }
 
 // ── Reply composer ────────────────────────────────────────────────────────────
+const MAX_MSG = 400
+
 function ReplyComposer({ agentId, partnerId, relationshipId, onSent }:
   { agentId: string; partnerId: string; relationshipId?: string; onSent: () => void }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const remaining = MAX_MSG - text.length
   const send = async () => {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed || text.length > MAX_MSG) return
     setSending(true); setError('')
     try {
       await api.sendAgentMessage({ agent_id: agentId, to_agent_id: partnerId,
@@ -203,14 +206,23 @@ function ReplyComposer({ agentId, partnerId, relationshipId, onSent }:
       <div className="flex gap-2">
         <textarea rows={2} value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          maxLength={MAX_MSG}
           placeholder="Type your reply…"
-          className="flex-1 bg-arena-muted border border-indigo-500/30 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/60 resize-none" />
-        <button onClick={send} disabled={sending || !text.trim()}
+          className={`flex-1 bg-arena-muted rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none border ${remaining < 20 ? 'border-red-500/50 focus:border-red-500/70' : 'border-indigo-500/30 focus:border-indigo-500/60'}`} />
+        <button onClick={send} disabled={sending || !text.trim() || text.length > MAX_MSG}
           className="px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-semibold hover:bg-indigo-500/30 transition-colors disabled:opacity-40 self-end">
           {sending ? '…' : 'Send'}
         </button>
       </div>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      <div className="flex items-center justify-between mt-1">
+        {error
+          ? <p className="text-xs text-red-400">{error}</p>
+          : <span />
+        }
+        <span className={`text-[10px] ${remaining < 20 ? 'text-red-400' : 'text-slate-600'}`}>
+          {remaining}
+        </span>
+      </div>
     </div>
   )
 }
