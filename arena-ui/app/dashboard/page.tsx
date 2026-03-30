@@ -261,6 +261,8 @@ export default function DashboardPage() {
   const [avatars,       setAvatars]       = useState<Record<string, string>>({})
   const [dramaOpen,     setDramaOpen]     = useState(false)
   const [hasAgent,      setHasAgent]      = useState<boolean | null>(null)
+  const [myAgentId,     setMyAgentId]     = useState<string | null>(null)
+  const [hasUnread,     setHasUnread]     = useState(false)
 
   const loadData = useCallback(async () => {
     try {
@@ -268,7 +270,18 @@ export default function DashboardPage() {
       if (user?.email) {
         try {
           const agentRes = await api.getMyAgent(user.email)
-          setHasAgent(agentRes?.data != null)
+          const agentData = agentRes?.data
+          setHasAgent(agentData != null)
+          if (agentData?.id) {
+            setMyAgentId(agentData.id)
+            const lastRead = localStorage.getItem(`arena_last_read_${agentData.id}`) ?? '1970-01-01'
+            const { data: unread } = await supabase.from('events')
+              .select('id')
+              .eq('metadata->>to_agent_id', agentData.id)
+              .gt('created_at', lastRead)
+              .limit(1)
+            if (unread && unread.length > 0) setHasUnread(true)
+          }
         } catch {
           // On any error, assume they have an agent (safer than showing the button)
           setHasAgent(true)
@@ -320,6 +333,17 @@ export default function DashboardPage() {
     return () => { supabase.removeChannel(channel) }
   }, [loadData])
 
+  // Realtime inbox — set unread badge when a message arrives addressed to my agent
+  useEffect(() => {
+    if (!myAgentId) return
+    const inbox = supabase.channel(`dashboard-inbox-${myAgentId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events',
+          filter: `metadata->>to_agent_id=eq.${myAgentId}` },
+        () => setHasUnread(true))
+      .subscribe()
+    return () => { supabase.removeChannel(inbox) }
+  }, [myAgentId])
+
   // Derived stats
   const activeRels   = relationships.filter(r => !['strangers','broken_up','divorced'].includes(r.stage))
   const couples      = relationships.filter(r => ['dating','committed','engaged','married'].includes(r.stage))
@@ -340,8 +364,16 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-500 mt-0.5">Real-time attachment drama</p>
         </div>
         {hasAgent === true && (
-          <Link href="/my-agent" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-sm font-semibold hover:bg-indigo-500/25 transition-colors shrink-0">
+          <Link href="/my-agent"
+            onClick={() => {
+              if (myAgentId) localStorage.setItem(`arena_last_read_${myAgentId}`, new Date().toISOString())
+              setHasUnread(false)
+            }}
+            className="relative flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-sm font-semibold hover:bg-indigo-500/25 transition-colors shrink-0">
             My Agent →
+            {hasUnread && (
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">!</span>
+            )}
           </Link>
         )}
         {hasAgent === false && (
