@@ -97,5 +97,61 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ imageData: image_data })
   }
 
+  // ── AI-style using uploaded photo as face reference ────────────────────────
+  if (action === 'ai_style') {
+    if (!FAL_KEY) return NextResponse.json({ error: 'Image generation not configured' }, { status: 400 })
+
+    const { reference_image, age, gender, occupation, style, bio, traits } =
+      body as { reference_image: string; age: number; gender: string; occupation: string; style: string; bio: string; traits?: string[] }
+    if (!reference_image) return NextResponse.json({ error: 'reference_image required' }, { status: 400 })
+
+    // Upload base64 to FAL storage if needed (flux-pulid requires a URL)
+    let refUrl = reference_image
+    if (!reference_image.startsWith('http')) {
+      const base64   = reference_image.split(',')[1]
+      const mimeType = reference_image.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg'
+      const buffer   = Buffer.from(base64, 'base64')
+      const form     = new FormData()
+      form.append('file', new Blob([buffer], { type: mimeType }), 'photo.jpg')
+      const uploadRes = await fetch('https://fal.run/files/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Key ${FAL_KEY}` },
+        body: form,
+      })
+      if (!uploadRes.ok) {
+        const err = await uploadRes.text().catch(() => uploadRes.statusText)
+        return NextResponse.json({ error: `Photo upload failed: ${err}` }, { status: 500 })
+      }
+      const uploadData = await uploadRes.json()
+      if (!uploadData.url) return NextResponse.json({ error: 'FAL upload returned no URL' }, { status: 500 })
+      refUrl = uploadData.url
+    }
+
+    const prompt  = buildPrompt({ age, gender, occupation, style, bio, traits })
+    const falRes  = await fetch('https://fal.run/fal-ai/flux-pulid', {
+      method: 'POST',
+      headers: { 'Authorization': `Key ${FAL_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt, negative_prompt: NEGATIVE,
+        reference_image_url: refUrl,
+        image_size: 'portrait_4_3',
+        num_images: 1, num_inference_steps: 25,
+        guidance_scale: 4.5, id_scale: 0.8,
+      }),
+    })
+    if (!falRes.ok) {
+      const err = await falRes.text().catch(() => falRes.statusText)
+      return NextResponse.json({ error: `AI styling failed: ${err}` }, { status: 500 })
+    }
+    const falData = await falRes.json()
+    const falUrl  = falData?.images?.[0]?.url
+    if (!falUrl) return NextResponse.json({ error: 'No image returned from AI styler' }, { status: 500 })
+
+    await arenaApi('save_agent_photos', {
+      photos: [{ agent_id, photo_type: 'avatar', context_tag: 'avatar', image_url: falUrl, fal_url: falUrl, sort_order: 0 }],
+    })
+    return NextResponse.json({ imageData: falUrl })
+  }
+
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }

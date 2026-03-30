@@ -363,10 +363,13 @@ function ApplySection({ agent }: { agent: UserAgent }) {
 }
 
 // ── Photo controls ────────────────────────────────────────────────────────────
-function PhotoControls({ agent, onPhotoChange }: { agent: UserAgent; onPhotoChange: (url: string) => void }) {
+function PhotoControls({ agent, currentPhoto, onPhotoChange }: {
+  agent: UserAgent; currentPhoto?: string; onPhotoChange: (url: string) => void
+}) {
   const [open,       setOpen]       = useState(false)
   const [generating, setGenerating] = useState(false)
   const [uploading,  setUploading]  = useState(false)
+  const [styling,    setStyling]    = useState(false)
   const [error,      setError]      = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -387,6 +390,27 @@ function PhotoControls({ agent, onPhotoChange }: { agent: UserAgent; onPhotoChan
       onPhotoChange(data.imageData)
     } catch (e) { setError(e instanceof Error ? e.message : 'Generation failed') }
     finally { setGenerating(false) }
+  }
+
+  const aiStyle = async () => {
+    if (!currentPhoto) return
+    setStyling(true); setError(''); setOpen(false)
+    try {
+      const res = await fetch('/api/user-agent-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'ai_style', agent_id: agent.id,
+          reference_image: currentPhoto,
+          age: agent.age, gender: agent.gender, occupation: agent.occupation,
+          style: agent.style, bio: agent.bio, traits: agent.traits,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      onPhotoChange(data.imageData)
+    } catch (e) { setError(e instanceof Error ? e.message : 'AI styling failed') }
+    finally { setStyling(false) }
   }
 
   const handleFile = async (file: File) => {
@@ -421,7 +445,8 @@ function PhotoControls({ agent, onPhotoChange }: { agent: UserAgent; onPhotoChan
     finally { setUploading(false) }
   }
 
-  const busy = generating || uploading
+  const busy    = generating || uploading || styling
+  const busyMsg = generating ? 'Generating…' : styling ? 'Styling…' : 'Uploading…'
   return (
     <div className="relative">
       <button
@@ -430,20 +455,28 @@ function PhotoControls({ agent, onPhotoChange }: { agent: UserAgent; onPhotoChan
       >
         {busy ? (
           <><span className="w-3 h-3 border border-slate-500 border-t-slate-300 rounded-full animate-spin inline-block" />
-          {generating ? 'Generating…' : 'Uploading…'}</>
+          {busyMsg}</>
         ) : (
           <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
           Edit photo</>
         )}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 bg-arena-card border border-arena-border rounded-xl shadow-xl overflow-hidden w-44">
+        <div className="absolute top-full left-0 mt-1 z-30 bg-arena-card border border-arena-border rounded-xl shadow-xl overflow-hidden w-48">
           <button
             onClick={generate}
             className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors"
           >
             <span>✨</span> Generate from bio
           </button>
+          {currentPhoto && (
+            <button
+              onClick={aiStyle}
+              className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors border-t border-arena-border"
+            >
+              <span>🎨</span> AI-style my photo
+            </button>
+          )}
           <button
             onClick={() => { setOpen(false); fileRef.current?.click() }}
             className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors border-t border-arena-border"
@@ -681,7 +714,7 @@ export default function MyAgentPage() {
             <div className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.color} border ${meta.border}`}>
               {meta.emoji} {meta.label} attachment
             </div>
-            <PhotoControls agent={agent} onPhotoChange={url => setAvatarUrl(url)} />
+            <PhotoControls agent={agent} currentPhoto={avatarUrl ?? undefined} onPhotoChange={url => setAvatarUrl(url)} />
           </div>
         </div>
 
