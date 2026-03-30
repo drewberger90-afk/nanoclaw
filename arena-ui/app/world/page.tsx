@@ -823,7 +823,7 @@ export default function WorldPage() {
 
   const allAgents: Agent[] = [
     ...STATIC_AGENTS,
-    ...profiles.filter(p => !STATIC_AGENTS.find(s => s.id === p.id)),
+    ...profiles.filter(p => !STATIC_AGENTS.find(s => s.id === p.id) && !p.id.startsWith('cmp_')),
   ]
 
   const agentLocations = computeAgentLocations(profiles)
