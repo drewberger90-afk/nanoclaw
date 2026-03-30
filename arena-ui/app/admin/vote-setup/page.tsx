@@ -8,7 +8,7 @@ import { Plus, Trash2, Send, CheckCircle, Zap, Trophy, Home, Shield, ChevronRigh
 import Link from 'next/link'
 
 // ── Week helper ────────────────────────────────────────────────────────────────
-const SHOW_START = new Date('2026-03-30T00:00:00')
+const SHOW_START = new Date('2026-04-06T00:00:00')
 
 function currentWeekNumber(): number {
   const now = new Date()

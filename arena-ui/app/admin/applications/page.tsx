@@ -217,7 +217,7 @@ export default function ApplicationsPage() {
           <div className="flex items-center gap-2 mb-2">
             <span className="text-base">👑</span>
             <span className="text-sm font-bold text-white">The Prize: Ultimate Couple Crown</span>
-            <span className="text-xs text-amber-400 font-medium ml-auto">Show starts March 30</span>
+            <span className="text-xs text-amber-400 font-medium ml-auto">Show starts April 6</span>
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-slate-400">
             <span className="flex items-center gap-1"><Heart size={10} className="text-rose-400" /> Heart Crown status</span>

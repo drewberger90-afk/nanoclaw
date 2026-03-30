@@ -6,7 +6,7 @@ import type { ShowRound, ShowRoundOption } from '@/types/arena'
 import { Trophy, Zap, Home, Shield, CheckCircle, Clock, Star } from 'lucide-react'
 
 // ── Week helper ────────────────────────────────────────────────────────────────
-const SHOW_START = new Date('2026-03-30T00:00:00')
+const SHOW_START = new Date('2026-04-06T00:00:00')
 
 function currentWeekNumber(): number {
   const now = new Date()
@@ -271,7 +271,7 @@ export default function VotePage() {
         <p className="text-sm text-slate-500">
           {weekNum > 0
             ? `Week ${weekNum} · Your votes shape what happens in the villa this week`
-            : 'Show premieres March 30 · Voting opens when the season begins'}
+            : 'Show premieres April 6 · Voting opens when the season begins'}
         </p>
       </div>
 
