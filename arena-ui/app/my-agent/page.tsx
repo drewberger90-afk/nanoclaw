@@ -362,6 +362,105 @@ function ApplySection({ agent }: { agent: UserAgent }) {
   )
 }
 
+// ── Photo controls ────────────────────────────────────────────────────────────
+function PhotoControls({ agent, onPhotoChange }: { agent: UserAgent; onPhotoChange: (url: string) => void }) {
+  const [open,       setOpen]       = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [uploading,  setUploading]  = useState(false)
+  const [error,      setError]      = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const generate = async () => {
+    setGenerating(true); setError(''); setOpen(false)
+    try {
+      const res = await fetch('/api/user-agent-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate', agent_id: agent.id,
+          age: agent.age, gender: agent.gender, occupation: agent.occupation,
+          style: agent.style, bio: agent.bio, traits: agent.traits,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      onPhotoChange(data.imageData)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Generation failed') }
+    finally { setGenerating(false) }
+  }
+
+  const handleFile = async (file: File) => {
+    setUploading(true); setError(''); setOpen(false)
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader  = new FileReader()
+        const canvas  = document.createElement('canvas')
+        const img     = new Image()
+        img.onload = () => {
+          const MAX = 600
+          const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
+          canvas.width  = Math.round(img.width  * ratio)
+          canvas.height = Math.round(img.height * ratio)
+          canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85))
+        }
+        img.onerror = reject
+        reader.onload = e => { img.src = e.target!.result as string }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const res = await fetch('/api/user-agent-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload', agent_id: agent.id, image_data: dataUrl }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      onPhotoChange(data.imageData)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Upload failed') }
+    finally { setUploading(false) }
+  }
+
+  const busy = generating || uploading
+  return (
+    <div className="relative">
+      <button
+        onClick={() => !busy && setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 transition-colors mt-1"
+      >
+        {busy ? (
+          <><span className="w-3 h-3 border border-slate-500 border-t-slate-300 rounded-full animate-spin inline-block" />
+          {generating ? 'Generating…' : 'Uploading…'}</>
+        ) : (
+          <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Edit photo</>
+        )}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-30 bg-arena-card border border-arena-border rounded-xl shadow-xl overflow-hidden w-44">
+          <button
+            onClick={generate}
+            className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors"
+          >
+            <span>✨</span> Generate from bio
+          </button>
+          <button
+            onClick={() => { setOpen(false); fileRef.current?.click() }}
+            className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors border-t border-arena-border"
+          >
+            <span>📷</span> Upload photo
+          </button>
+        </div>
+      )}
+      <input
+        ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
+      />
+      {error && <p className="text-[10px] text-red-400 mt-1 max-w-[180px]">{error}</p>}
+    </div>
+  )
+}
+
 // ── Not logged in ─────────────────────────────────────────────────────────────
 function NotLoggedIn() {
   return (
@@ -390,6 +489,7 @@ export default function MyAgentPage() {
   const [loading,        setLoading]        = useState(true)
   const [activeTab,      setActiveTab]      = useState<'conversations' | 'thoughts'>('conversations')
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null)
+  const [avatarUrl,      setAvatarUrl]      = useState<string | null>(null)
   const chatBottomRef = useRef<HTMLDivElement>(null)
 
   const loadConversation = useCallback(async (agentId: string, partnerId: string) => {
@@ -455,6 +555,15 @@ export default function MyAgentPage() {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [convEvents.length, selectedPartner])
+
+  // Load cached avatar for user's agent
+  useEffect(() => {
+    if (!agent?.id) return
+    fetch(`/api/user-agent-photo?agent_id=${agent.id}`)
+      .then(r => r.json())
+      .then(d => { if (d.imageData) setAvatarUrl(d.imageData) })
+      .catch(() => {})
+  }, [agent?.id])
 
   // Real-time: reload conversation + relationships when a message arrives addressed to our agent
   useEffect(() => {
@@ -554,9 +663,14 @@ export default function MyAgentPage() {
       <div className="max-w-3xl mx-auto px-6">
         {/* Profile header */}
         <div className="flex items-end gap-4 -mt-8 mb-6">
-          <div className={`w-20 h-20 rounded-2xl shrink-0 border-2 ${meta.border} shadow-lg relative z-10
-            ${meta.bg} flex items-center justify-center text-4xl`}>
-            {meta.emoji}
+          <div className={`w-20 h-20 rounded-2xl shrink-0 border-2 ${meta.border} shadow-lg relative z-10 overflow-hidden
+            ${!avatarUrl ? `${meta.bg} flex items-center justify-center text-4xl` : ''}`}>
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt={agent.name} className="w-full h-full object-cover object-center" />
+            ) : (
+              meta.emoji
+            )}
           </div>
           <div className="pb-1 flex-1 min-w-0 relative z-10">
             <div className="flex items-baseline gap-3 flex-wrap">
@@ -567,6 +681,7 @@ export default function MyAgentPage() {
             <div className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.color} border ${meta.border}`}>
               {meta.emoji} {meta.label} attachment
             </div>
+            <PhotoControls agent={agent} onPhotoChange={url => setAvatarUrl(url)} />
           </div>
         </div>
 
