@@ -1818,7 +1818,10 @@ def do_reply(agent):
         })
         if res.get("replied"):
             pending_replies.pop(agent["id"])
-            log(f"{agent['name']} reply was sent by human — skipping LLM")
+            log(f"{agent['name']} reply was sent by human — queuing {from_agent['name']} to respond")
+            # Queue the AI agent to reply to the human's message
+            human_msg = res.get("content") or their_msg
+            pending_replies[from_agent["id"]] = (agent, human_msg, rkey(agent["id"], from_agent["id"]), time.time())
             return True  # human already handled it
 
     # LLM auto-reply
@@ -3518,6 +3521,35 @@ def poll_user_agents():
         log(f"{'Loaded' if is_new else 'Restored'} user agent {agent['name']} ({uid}) + companion {companion['name']} ({comp_id})")
 
 
+_last_human_msg_poll = 0
+HUMAN_MSG_POLL_EVERY = 20  # turns between checks for unanswered human messages
+
+def poll_human_messages():
+    """Pick up any human-sent messages that haven't received an AI reply yet.
+    Handles cases where the human typed a message in an ongoing conversation
+    and the runner never got notified via pending_replies."""
+    global _last_human_msg_poll
+    if turn_count - _last_human_msg_poll < HUMAN_MSG_POLL_EVERY:
+        return
+    _last_human_msg_poll = turn_count
+    try:
+        res = supabase("get_pending_human_messages", {"since_minutes": 30})
+        for item in (res.get("data") or []):
+            from_id  = item.get("from_agent_id")  # user agent
+            to_id    = item.get("to_agent_id")    # AI agent that needs to reply
+            content  = item.get("content", "")
+            from_agent = agent_by_id(from_id)
+            to_agent   = agent_by_id(to_id)
+            if not from_agent or not to_agent:
+                continue
+            # Only queue if not already pending
+            if to_id not in pending_replies:
+                pending_replies[to_id] = (from_agent, content, rkey(from_id, to_id), time.time() - USER_REPLY_GRACE - 1)
+                log(f"poll_human_messages: queued {to_agent['name']} to reply to {from_agent['name']}")
+    except Exception as e:
+        log_error(f"poll_human_messages: {e}")
+
+
 # ── Health check server ───────────────────────────────────────────────────────
 
 def _start_health_server():
@@ -3761,6 +3793,7 @@ def run_turn():
     check_fan_energy()
     auto_check_crown()
     poll_user_agents()
+    poll_human_messages()
 
     # Check for newly-accepted applications periodically
     global LAST_APP_CHECK
@@ -3876,6 +3909,7 @@ def main():
                     check_fan_energy()
                     auto_check_crown()
                     poll_user_agents()
+                    poll_human_messages()
                     threading.Thread(target=check_applications, daemon=True).start()
                 except Exception as e:
                     _log("error", "housekeeping_error", error=str(e))

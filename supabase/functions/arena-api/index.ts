@@ -718,14 +718,46 @@ Deno.serve(async (req) => {
           params as { agent_id: string; partner_id: string; since: string }
         if (!agent_id || !partner_id || !since)
           return json({ error: 'agent_id, partner_id, and since are required' }, 400)
-        const { data, error } = await supabase.from('events').select('id')
+        const { data, error } = await supabase.from('events').select('id, content')
           .eq('agent_id', agent_id)
           .eq('metadata->>to_agent_id', partner_id)
           .eq('metadata->>human_sent', 'true')
           .gt('created_at', since)
+          .order('created_at', { ascending: false })
           .limit(1).maybeSingle()
         if (error) return json({ error: error.message }, 500)
-        return json({ replied: !!data })
+        return json({ replied: !!data, content: data?.content ?? null })
+      }
+
+      // ── get_pending_human_messages ────────────────────────────────────────────
+      // Returns human-sent messages from the last N minutes that have no AI reply since
+      case 'get_pending_human_messages': {
+        const { since_minutes = 30 } = params as { since_minutes?: number }
+        const since = new Date(Date.now() - since_minutes * 60 * 1000).toISOString()
+        // Fetch recent human-sent messages
+        const { data: humanMsgs, error: hErr } = await supabase.from('events')
+          .select('agent_id, content, metadata, created_at')
+          .eq('metadata->>human_sent', 'true')
+          .gt('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(50)
+        if (hErr) return json({ error: hErr.message }, 500)
+        if (!humanMsgs || humanMsgs.length === 0) return json({ data: [] })
+        // For each, check if the target AI has responded since the human message
+        const pending = []
+        for (const msg of humanMsgs) {
+          const toAgentId = msg.metadata?.to_agent_id
+          if (!toAgentId) continue
+          const { data: reply } = await supabase.from('events')
+            .select('id').eq('agent_id', toAgentId)
+            .eq('metadata->>to_agent_id', msg.agent_id)
+            .gt('created_at', msg.created_at)
+            .limit(1).maybeSingle()
+          if (!reply) {
+            pending.push({ from_agent_id: msg.agent_id, to_agent_id: toAgentId, content: msg.content, sent_at: msg.created_at })
+          }
+        }
+        return json({ data: pending })
       }
 
       default:
