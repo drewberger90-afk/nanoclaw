@@ -433,10 +433,16 @@ function PhotoControls({ agent, currentPhoto, onPhotoChange }: {
         reader.onerror = reject
         reader.readAsDataURL(file)
       })
+      // Always AI-style — never store raw photos
       const res = await fetch('/api/user-agent-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upload', agent_id: agent.id, image_data: dataUrl }),
+        body: JSON.stringify({
+          action: 'ai_style', agent_id: agent.id,
+          reference_image: dataUrl,
+          age: agent.age, gender: agent.gender, occupation: agent.occupation,
+          style: agent.style, bio: agent.bio, traits: agent.traits,
+        }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -446,7 +452,7 @@ function PhotoControls({ agent, currentPhoto, onPhotoChange }: {
   }
 
   const busy    = generating || uploading || styling
-  const busyMsg = generating ? 'Generating…' : styling ? 'Styling…' : 'Uploading…'
+  const busyMsg = generating ? 'Generating…' : (styling || uploading) ? 'Styling…' : 'Uploading…'
   return (
     <div className="relative">
       <button
@@ -469,19 +475,11 @@ function PhotoControls({ agent, currentPhoto, onPhotoChange }: {
           >
             <span>✨</span> Generate from bio
           </button>
-          {currentPhoto && (
-            <button
-              onClick={aiStyle}
-              className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors border-t border-arena-border"
-            >
-              <span>🎨</span> AI-style my photo
-            </button>
-          )}
           <button
             onClick={() => { setOpen(false); fileRef.current?.click() }}
             className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-arena-muted flex items-center gap-2 transition-colors border-t border-arena-border"
           >
-            <span>📷</span> Upload photo
+            <span>📷</span> Upload &amp; AI-style
           </button>
         </div>
       )}
