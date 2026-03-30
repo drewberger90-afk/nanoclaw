@@ -711,7 +711,7 @@ export default function MyAgentPage() {
                     <div className="text-3xl mb-2">{meta.emoji}</div>
                     <p className="text-sm">{agent.name} hasn&apos;t had any conversations yet</p>
                   </div>
-                )}
+                ))}
               {activeTab === 'conversations' && isMyTurn && selectedPartner && (
                 <ReplyComposer agentId={agentId} partnerId={selectedPartner}
                   relationshipId={selectedRel?.id}
