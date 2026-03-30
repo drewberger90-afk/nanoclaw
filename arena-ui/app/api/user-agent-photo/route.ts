@@ -27,7 +27,9 @@ function buildPrompt(agent: {
   age: number; gender: string; occupation: string
   style: string; bio: string; traits?: string[]
 }): string {
-  const genderWord = agent.gender === 'male' ? 'man' : agent.gender === 'female' ? 'woman' : 'person'
+  const genderWord = (agent.gender === 'male' || agent.gender === 'm') ? 'man'
+    : (agent.gender === 'female' || agent.gender === 'f') ? 'woman'
+    : 'person'
   const styleHint  = STYLE_HINTS[agent.style] ?? ''
   const bioSnippet = agent.bio.slice(0, 120).replace(/["""]/g, '')
   const traitHint  = agent.traits?.slice(0, 3).join(', ') ?? ''
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
       const buffer   = Buffer.from(base64, 'base64')
       const form     = new FormData()
       form.append('file', new Blob([buffer], { type: mimeType }), 'photo.jpg')
-      const uploadRes = await fetch('https://fal.run/files/upload', {
+      const uploadRes = await fetch('https://storage.fal.ai/upload', {
         method: 'POST',
         headers: { 'Authorization': `Key ${FAL_KEY}` },
         body: form,
