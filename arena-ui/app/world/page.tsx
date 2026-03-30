@@ -801,6 +801,17 @@ export default function WorldPage() {
     })
   }, [])
 
+  // Fetch avatars for user-created agents once profiles load
+  useEffect(() => {
+    profiles.forEach(agent => {
+      if (STATIC_AGENTS.find(s => s.id === agent.id)) return
+      fetch(`/api/agent-avatar/${agent.id}`)
+        .then(r => r.json())
+        .then(d => { if (d.imageData) setAvatars(prev => ({ ...prev, [agent.id]: d.imageData })) })
+        .catch(() => {})
+    })
+  }, [profiles])
+
   useEffect(() => {
     load()
     const ch = supabase

@@ -1343,7 +1343,7 @@ def say(agent, situation, other=None, vote_ctx=None, max_tokens=180, replying_to
 
     system = (
         f"You are {agent['name']}, {agent['age']}, {agent['occupation']}.\n\n"
-        f"{STYLE_VOICE[agent['style']]}\n"
+        f"{STYLE_VOICE.get(agent['style'], 'Be authentic and true to your personality.')}\n"
         f"YOUR SPECIFIC VOICE: {AGENT_VOICE.get(agent['id'], 'Be natural, authentic, and true to your bio and personality above.')}\n"
         f"Bio: {agent['bio']}\n"
         f"Quirks: {agent['quirks']}\n"
@@ -3505,7 +3505,7 @@ def poll_user_agents():
                         "id": a["id"], "name": a["name"], "age": a["age"],
                         "style": a["style"], "occupation": a["occupation"],
                         "bio": a["bio"], "traits": a["traits"],
-                        "location": AGENT_LOC[a["id"]], "show_role": "spectator",
+                        "location": AGENT_LOC.get(a["id"], "cafe"), "show_role": "spectator",
                     }]})
                 except Exception as e:
                     log_error(f"poll_user_agents upsert: {e}")
